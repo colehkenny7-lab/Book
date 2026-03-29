@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Game' if game else 'New Game' }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ 'Edit Game' if game else 'New Game' }}</h1>
+</div>
+
+<div class="bet-wrap">
+  <div class="bet-card">
+    <form method="POST">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Game Title</label>
+          <input type="text" name="title" class="form-input" required
+                 value="{{ game.title if game else '' }}" placeholder="e.g. NBA Finals Game 7" />
+        </div>
+      </div>
+      <div class="form-row two-col">
+        <div class="form-group">
+          <label>Team 1</label>
+          <input type="text" name="team1" class="form-input" required
+                 value="{{ game.team1 if game else '' }}" placeholder="e.g. Lakers" />
+        </div>
+        <div class="form-group">
+          <label>Team 2</label>
+          <input type="text" name="team2" class="form-input" required
+                 value="{{ game.team2 if game else '' }}" placeholder="e.g. Celtics" />
+        </div>
+      </div>
+      <div class="form-row three-col">
+        <div class="form-group">
+          <label>Odds Team 1</label>
+          <input type="number" name="odds1" class="form-input" required step="0.01" min="1"
+                 value="{{ game.odds1 if game else '2.00' }}" />
+        </div>
+        <div class="form-group">
+          <label>Odds Team 2</label>
+          <input type="number" name="odds2" class="form-input" required step="0.01" min="1"
+                 value="{{ game.odds2 if game else '2.00' }}" />
+        </div>
+        <div class="form-group">
+          <label>Draw Odds <small>(optional)</small></label>
+          <input type="number" name="odds_draw" class="form-input" step="0.01" min="1"
+                 value="{{ game.odds_draw if game and game.odds_draw else '' }}" placeholder="–" />
+        </div>
+      </div>
+      <div class="form-row two-col">
+        <div class="form-group">
+          <label>Game Date &amp; Time</label>
+          <input type="datetime-local" name="game_time" class="form-input" required
+                 value="{{ game.game_time if game else '' }}" />
+        </div>
+        {% if game %}
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status" class="form-input">
+            <option value="open"   {% if game.status=='open'   %}selected{% endif %}>Open</option>
+            <option value="closed" {% if game.status=='closed' %}selected{% endif %}>Closed</option>
+          </select>
+        </div>
+        {% endif %}
+      </div>
+
+      <div style="display:flex;gap:.5rem;margin-top:1rem">
+        <button type="submit" class="btn btn-primary">{{ 'Save Changes' if game else 'Create Game' }}</button>
+        <a href="{{ url_for('admin') }}" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

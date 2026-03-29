@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Games{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Games</h1>
+</div>
+
+<!-- OPEN GAMES -->
+<section class="section">
+  <h2 class="section-title">Open for Betting</h2>
+  {% if open_games %}
+    <div class="games-grid">
+      {% for g in open_games %}
+        <div class="game-card">
+          <div class="game-header">
+            <span class="game-title">{{ g.title }}</span>
+            <span class="badge badge-open">Open</span>
+          </div>
+          <div class="matchup">
+            <div class="team">
+              <span class="team-name">{{ g.team1 }}</span>
+              <span class="odds-pill">{{ g.odds1 }}x</span>
+            </div>
+            <span class="vs">VS</span>
+            <div class="team team-right">
+              <span class="odds-pill">{{ g.odds2 }}x</span>
+              <span class="team-name">{{ g.team2 }}</span>
+            </div>
+          </div>
+          {% if g.odds_draw %}
+            <div class="draw-row">
+              <span>Draw</span>
+              <span class="odds-pill">{{ g.odds_draw }}x</span>
+            </div>
+          {% endif %}
+          <div class="game-footer">
+            <span class="game-time">{{ g.game_time }}</span>
+            <a href="{{ url_for('place_bet', game_id=g.id) }}" class="btn btn-primary btn-sm">Bet Now</a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state"><p>No open games right now.</p></div>
+  {% endif %}
+</section>
+
+<!-- CLOSED GAMES -->
+{% if closed_games %}
+<section class="section">
+  <h2 class="section-title">Closed – Awaiting Result</h2>
+  <div class="games-grid">
+    {% for g in closed_games %}
+      <div class="game-card game-card-dim">
+        <div class="game-header">
+          <span class="game-title">{{ g.title }}</span>
+          <span class="badge badge-closed">Closed</span>
+        </div>
+        <div class="matchup">
+          <div class="team"><span class="team-name">{{ g.team1 }}</span></div>
+          <span class="vs">VS</span>
+          <div class="team team-right"><span class="team-name">{{ g.team2 }}</span></div>
+        </div>
+        <div class="game-footer"><span class="game-time">{{ g.game_time }}</span></div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- SETTLED GAMES -->
+{% if settled_games %}
+<section class="section">
+  <h2 class="section-title">Recent Results</h2>
+  <div class="games-grid">
+    {% for g in settled_games %}
+      <div class="game-card game-card-dim">
+        <div class="game-header">
+          <span class="game-title">{{ g.title }}</span>
+          <span class="badge badge-settled">Settled</span>
+        </div>
+        <div class="matchup">
+          <div class="team {% if g.winner == g.team1 %}winner-team{% endif %}">
+            <span class="team-name">{{ g.team1 }}</span>
+          </div>
+          <span class="vs">VS</span>
+          <div class="team team-right {% if g.winner == g.team2 %}winner-team{% endif %}">
+            <span class="team-name">{{ g.team2 }}</span>
+          </div>
+        </div>
+        <div class="game-footer">
+          <span class="game-time">{{ g.game_time }}</span>
+          <span class="winner-label">Winner: <strong>{{ g.winner }}</strong></span>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

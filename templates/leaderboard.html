@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Leaderboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Leaderboard</h1>
+</div>
+
+{% if users %}
+  <div class="table-wrap">
+    <table class="bet-table leaderboard-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Player</th>
+          <th>Balance</th>
+          <th>Total Bets</th>
+          <th>Won</th>
+          <th>Lost</th>
+          <th>Total Won ($)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+          <tr class="{% if current_user and u.username == current_user.username %}highlight-row{% endif %}">
+            <td>
+              {% if loop.index == 1 %}<span class="rank rank-1">🥇</span>
+              {% elif loop.index == 2 %}<span class="rank rank-2">🥈</span>
+              {% elif loop.index == 3 %}<span class="rank rank-3">🥉</span>
+              {% else %}<span class="rank">{{ loop.index }}</span>
+              {% endif %}
+            </td>
+            <td><strong>{{ u.username }}</strong>{% if current_user and u.username == current_user.username %} <span class="you-badge">YOU</span>{% endif %}</td>
+            <td class="{% if u.balance >= 1000 %}text-won{% else %}text-lost{% endif %}">${{ "%.2f"|format(u.balance) }}</td>
+            <td>{{ u.total_bets }}</td>
+            <td class="text-won">{{ u.wins }}</td>
+            <td class="text-lost">{{ u.losses }}</td>
+            <td class="text-won">+${{ "%.2f"|format(u.total_won) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="empty-state"><p>No players yet. Be the first to register!</p></div>
+{% endif %}
+{% endblock %}

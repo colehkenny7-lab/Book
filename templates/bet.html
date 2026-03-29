@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Place Bet – {{ game.title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Place Your Bet</h1>
+</div>
+
+<div class="bet-wrap">
+  <div class="bet-card">
+    <h2 class="bet-game-title">{{ game.title }}</h2>
+    <p class="bet-game-time">{{ game.game_time }}</p>
+
+    <div class="matchup matchup-large">
+      <div class="team">
+        <span class="team-name">{{ game.team1 }}</span>
+        <span class="odds-pill-lg">{{ game.odds1 }}x</span>
+      </div>
+      <span class="vs">VS</span>
+      <div class="team team-right">
+        <span class="odds-pill-lg">{{ game.odds2 }}x</span>
+        <span class="team-name">{{ game.team2 }}</span>
+      </div>
+    </div>
+    {% if game.odds_draw %}
+      <div class="draw-row"><span>Draw</span><span class="odds-pill-lg">{{ game.odds_draw }}x</span></div>
+    {% endif %}
+
+    <hr class="divider" />
+
+    <form method="POST" action="{{ url_for('place_bet', game_id=game.id) }}" id="bet-form">
+      <div class="form-group">
+        <label>Pick a Winner</label>
+        <div class="pick-buttons">
+          <label class="pick-label">
+            <input type="radio" name="pick" value="{{ game.team1 }}" required />
+            <span class="pick-btn">{{ game.team1 }} <em>{{ game.odds1 }}x</em></span>
+          </label>
+          <label class="pick-label">
+            <input type="radio" name="pick" value="{{ game.team2 }}" />
+            <span class="pick-btn">{{ game.team2 }} <em>{{ game.odds2 }}x</em></span>
+          </label>
+          {% if game.odds_draw %}
+          <label class="pick-label">
+            <input type="radio" name="pick" value="Draw" />
+            <span class="pick-btn">Draw <em>{{ game.odds_draw }}x</em></span>
+          </label>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="amount">Bet Amount ($)</label>
+        <input type="number" id="amount" name="amount" class="form-input"
+               min="1" max="{{ user.balance }}" step="1" required
+               placeholder="e.g. 100" />
+        <small class="form-hint">Balance: <strong>${{ "%.2f"|format(user.balance) }}</strong></small>
+      </div>
+
+      <div class="payout-preview" id="payout-preview" style="display:none">
+        Potential payout: <strong id="payout-value">–</strong>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block">Confirm Bet</button>
+      <a href="{{ url_for('games') }}" class="btn btn-ghost btn-block" style="margin-top:.5rem">Cancel</a>
+    </form>
+  </div>
+</div>
+
+<script>
+  // Inline odds data so script.js can compute potential payout
+  window.GAME_ODDS = {
+    "{{ game.team1 }}": {{ game.odds1 }},
+    "{{ game.team2 }}": {{ game.odds2 }},
+    {% if game.odds_draw %}"Draw": {{ game.odds_draw }},{% endif %}
+  };
+</script>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}My Bets{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>My Bets</h1>
+  <span class="balance-badge-lg">Balance: ${{ "%.2f"|format(user.balance) }}</span>
+</div>
+
+{% if bets %}
+  <!-- Stats summary -->
+  {% set pending_count = bets | selectattr('status', 'eq', 'pending') | list | length %}
+  {% set won_count     = bets | selectattr('status', 'eq', 'won')     | list | length %}
+  {% set lost_count    = bets | selectattr('status', 'eq', 'lost')    | list | length %}
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-num">{{ bets|length }}</div><div class="stat-label">Total Bets</div></div>
+    <div class="stat-card stat-pending"><div class="stat-num">{{ pending_count }}</div><div class="stat-label">Pending</div></div>
+    <div class="stat-card stat-won"><div class="stat-num">{{ won_count }}</div><div class="stat-label">Won</div></div>
+    <div class="stat-card stat-lost"><div class="stat-num">{{ lost_count }}</div><div class="stat-label">Lost</div></div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="bet-table">
+      <thead>
+        <tr>
+          <th>Game</th>
+          <th>Pick</th>
+          <th>Odds</th>
+          <th>Wager</th>
+          <th>Payout</th>
+          <th>Result</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in bets %}
+          <tr class="bet-row-{{ b.status }}">
+            <td>{{ b.title }}</td>
+            <td><strong>{{ b.pick }}</strong></td>
+            <td>{{ b.odds }}x</td>
+            <td>${{ "%.2f"|format(b.amount) }}</td>
+            <td>
+              {% if b.status == 'won' %}
+                <span class="text-won">+${{ "%.2f"|format(b.payout) }}</span>
+              {% elif b.status == 'lost' %}
+                <span class="text-lost">-${{ "%.2f"|format(b.amount) }}</span>
+              {% else %}
+                <span class="text-muted">${{ "%.2f"|format(b.amount * b.odds) }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if b.status == 'pending' %}
+                <span class="badge badge-pending">Pending</span>
+              {% elif b.status == 'won' %}
+                <span class="badge badge-won">Won</span>
+              {% else %}
+                <span class="badge badge-lost">Lost</span>
+              {% endif %}
+            </td>
+            <td class="text-muted small">{{ b.created_at[:10] }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="empty-state">
+    <p>You haven't placed any bets yet.</p>
+    <a href="{{ url_for('games') }}" class="btn btn-primary">Browse Games</a>
+  </div>
+{% endif %}
+{% endblock %}

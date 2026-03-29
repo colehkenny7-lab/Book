@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Register{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <h2>Create Account</h2>
+    <p class="auth-sub">Sign up free and get $1,000 in chips to start betting.</p>
+    <form method="POST" action="{{ url_for('register') }}">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" class="form-input" required autofocus maxlength="30" />
+      </div>
+      <div class="form-group">
+        <label for="password">Password <small>(min 6 characters)</small></label>
+        <input type="password" id="password" name="password" class="form-input" required minlength="6" />
+      </div>
+      <div class="form-group">
+        <label for="confirm">Confirm Password</label>
+        <input type="password" id="confirm" name="confirm" class="form-input" required minlength="6" />
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Create Account</button>
+    </form>
+    <p class="auth-footer">Already have an account? <a href="{{ url_for('login') }}">Login</a></p>
+  </div>
+</div>
+{% endblock %}
