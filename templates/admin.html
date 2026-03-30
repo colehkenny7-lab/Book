@@ -80,9 +80,11 @@
             <td class="small">{{ u.created_at[:10] }}</td>
             <td>
               {% if not u.is_admin %}
-                <form method="POST" action="{{ url_for('admin_topup', user_id=u.id) }}" style="display:flex;gap:.4rem">
-                  <input type="number" name="amount" min="1" step="1" placeholder="$" class="form-input form-input-xs" required />
-                  <button class="btn btn-primary btn-xs">Add</button>
+                <form method="POST" action="{{ url_for('admin_set_balance', user_id=u.id) }}" style="display:flex;gap:.4rem">
+                  <input type="number" name="amount" min="0" step="1"
+                         placeholder="{{ u.balance|int }}"
+                         class="form-input form-input-xs" required />
+                  <button class="btn btn-primary btn-xs">Set</button>
                 </form>
               {% endif %}
             </td>

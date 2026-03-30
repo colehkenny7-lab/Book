@@ -11,7 +11,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-me-in-production-please")
 
 DATABASE = os.path.join(os.path.dirname(__file__), "betting.db")
-STARTING_BALANCE = 1000.0  # each new user starts with $1,000 in chips
+STARTING_BALANCE = 0.0  # new users start with $0 until admin sets their balance
 
 
 # ---------------------------------------------------------------------------
@@ -480,22 +480,23 @@ def admin_close_game(game_id):
     return redirect(url_for("admin"))
 
 
-@app.route("/admin/user/<int:user_id>/topup", methods=["POST"])
+@app.route("/admin/user/<int:user_id>/set-balance", methods=["POST"])
 @admin_required
-def admin_topup(user_id):
+def admin_set_balance(user_id):
     amount = request.form.get("amount", "").strip()
     try:
         amount = float(amount)
-        if amount <= 0:
+        if amount < 0:
             raise ValueError
     except ValueError:
         flash("Invalid amount.", "danger")
         return redirect(url_for("admin"))
 
     db = get_db()
-    db.execute("UPDATE users SET balance = balance + ? WHERE id=?", (amount, user_id))
+    user = db.execute("SELECT username FROM users WHERE id=?", (user_id,)).fetchone()
+    db.execute("UPDATE users SET balance = ? WHERE id=?", (amount, user_id))
     db.commit()
-    flash(f"Added ${amount:,.2f} to user #{user_id}.", "success")
+    flash(f"Set {user['username']}'s balance to ${amount:,.2f}.", "success")
     return redirect(url_for("admin"))
 
 
