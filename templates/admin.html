@@ -80,12 +80,20 @@
             <td class="small">{{ u.created_at[:10] }}</td>
             <td>
               {% if not u.is_admin %}
-                <form method="POST" action="{{ url_for('admin_set_balance', user_id=u.id) }}" style="display:flex;gap:.4rem">
-                  <input type="number" name="amount" min="0" step="1"
-                         placeholder="{{ u.balance|int }}"
-                         class="form-input form-input-xs" required />
-                  <button class="btn btn-primary btn-xs">Set</button>
-                </form>
+                <div style="display:flex;flex-direction:column;gap:.35rem">
+                  <form method="POST" action="{{ url_for('admin_set_balance', user_id=u.id) }}" style="display:flex;gap:.3rem" title="Set exact balance">
+                    <input type="number" name="amount" min="0" step="1"
+                           placeholder="Set to…"
+                           class="form-input form-input-xs" required />
+                    <button class="btn btn-primary btn-xs">Set</button>
+                  </form>
+                  <form method="POST" action="{{ url_for('admin_adjust_balance', user_id=u.id) }}" style="display:flex;gap:.3rem" title="Add or subtract">
+                    <input type="number" name="amount" step="1"
+                           placeholder="+/- amount"
+                           class="form-input form-input-xs" required />
+                    <button class="btn btn-ghost btn-xs">Adjust</button>
+                  </form>
+                </div>
               {% endif %}
             </td>
           </tr>

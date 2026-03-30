@@ -480,6 +480,26 @@ def admin_close_game(game_id):
     return redirect(url_for("admin"))
 
 
+@app.route("/admin/user/<int:user_id>/adjust-balance", methods=["POST"])
+@admin_required
+def admin_adjust_balance(user_id):
+    amount = request.form.get("amount", "").strip()
+    try:
+        amount = float(amount)
+    except ValueError:
+        flash("Invalid amount.", "danger")
+        return redirect(url_for("admin"))
+
+    db = get_db()
+    user = db.execute("SELECT username, balance FROM users WHERE id=?", (user_id,)).fetchone()
+    new_balance = max(0, user["balance"] + amount)
+    db.execute("UPDATE users SET balance = ? WHERE id=?", (new_balance, user_id))
+    db.commit()
+    direction = "Added" if amount >= 0 else "Removed"
+    flash(f"{direction} ${abs(amount):,.2f} {'to' if amount >= 0 else 'from'} {user['username']}. New balance: ${new_balance:,.2f}", "success")
+    return redirect(url_for("admin"))
+
+
 @app.route("/admin/user/<int:user_id>/set-balance", methods=["POST"])
 @admin_required
 def admin_set_balance(user_id):
