@@ -26,33 +26,69 @@
       <div class="draw-row"><span>Draw</span><span class="odds-pill-lg">{{ game.odds_draw }}x</span></div>
     {% endif %}
 
+    {% if game.min_bet or game.max_bet %}
+      <div class="bet-limits">
+        {% if game.min_bet %}<span>Min bet: <strong>${{ "%.0f"|format(game.min_bet) }}</strong></span>{% endif %}
+        {% if game.max_bet %}<span>Max bet: <strong>${{ "%.0f"|format(game.max_bet) }}</strong></span>{% endif %}
+      </div>
+    {% endif %}
+
     <hr class="divider" />
 
     <form method="POST" action="{{ url_for('place_bet', game_id=game.id) }}" id="bet-form">
+      <input type="hidden" name="bet_type" id="bet_type" value="moneyline" />
+
+      <!-- MONEYLINE -->
       <div class="form-group">
-        <label>Pick a Winner</label>
+        <label class="section-sub-label">Moneyline</label>
         <div class="pick-buttons">
-          <label class="pick-label">
+          <label class="pick-label" onclick="setBetType('moneyline')">
             <input type="radio" name="pick" value="{{ game.team1 }}" required />
-            <span class="pick-btn">{{ game.team1 }} <em>{{ game.odds1 }}x</em></span>
+            <span class="pick-btn">{{ game.team1 }}<em>{{ game.odds1 }}x</em></span>
           </label>
-          <label class="pick-label">
+          <label class="pick-label" onclick="setBetType('moneyline')">
             <input type="radio" name="pick" value="{{ game.team2 }}" />
-            <span class="pick-btn">{{ game.team2 }} <em>{{ game.odds2 }}x</em></span>
+            <span class="pick-btn">{{ game.team2 }}<em>{{ game.odds2 }}x</em></span>
           </label>
           {% if game.odds_draw %}
-          <label class="pick-label">
+          <label class="pick-label" onclick="setBetType('moneyline')">
             <input type="radio" name="pick" value="Draw" />
-            <span class="pick-btn">Draw <em>{{ game.odds_draw }}x</em></span>
+            <span class="pick-btn">Draw<em>{{ game.odds_draw }}x</em></span>
           </label>
           {% endif %}
         </div>
       </div>
 
+      <!-- SPREAD (only if set) -->
+      {% if game.spread1 is not none %}
+      <div class="form-group">
+        <label class="section-sub-label">Point Spread</label>
+        <div class="pick-buttons">
+          <label class="pick-label" onclick="setBetType('spread')">
+            <input type="radio" name="pick" value="{{ game.team1 }}" />
+            <span class="pick-btn">
+              {{ game.team1 }}
+              <em>{{ "%+.1f"|format(game.spread1) }} @ {{ game.spread_odds1 }}x</em>
+            </span>
+          </label>
+          <label class="pick-label" onclick="setBetType('spread')">
+            <input type="radio" name="pick" value="{{ game.team2 }}" />
+            <span class="pick-btn">
+              {{ game.team2 }}
+              <em>{{ "%+.1f"|format(game.spread2) }} @ {{ game.spread_odds2 }}x</em>
+            </span>
+          </label>
+        </div>
+        <small class="form-hint">Spread picks are separate from moneyline.</small>
+      </div>
+      {% endif %}
+
       <div class="form-group">
         <label for="amount">Bet Amount ($)</label>
         <input type="number" id="amount" name="amount" class="form-input"
-               min="1" max="{{ user.balance }}" step="1" required
+               min="{{ game.min_bet or 1 }}"
+               {% if game.max_bet %}max="{{ game.max_bet }}"{% endif %}
+               step="1" required
                placeholder="e.g. 100" />
         <small class="form-hint">Balance: <strong>${{ "%.2f"|format(user.balance) }}</strong></small>
       </div>
@@ -68,11 +104,23 @@
 </div>
 
 <script>
-  // Inline odds data so script.js can compute potential payout
   window.GAME_ODDS = {
-    "{{ game.team1 }}": {{ game.odds1 }},
-    "{{ game.team2 }}": {{ game.odds2 }},
-    {% if game.odds_draw %}"Draw": {{ game.odds_draw }},{% endif %}
+    moneyline: {
+      "{{ game.team1 }}": {{ game.odds1 }},
+      "{{ game.team2 }}": {{ game.odds2 }},
+      {% if game.odds_draw %}"Draw": {{ game.odds_draw }},{% endif %}
+    },
+    spread: {
+      {% if game.spread1 is not none %}
+      "{{ game.team1 }}": {{ game.spread_odds1 }},
+      "{{ game.team2 }}": {{ game.spread_odds2 }},
+      {% endif %}
+    }
   };
+
+  function setBetType(type) {
+    document.getElementById('bet_type').value = type;
+    updatePayout();
+  }
 </script>
 {% endblock %}

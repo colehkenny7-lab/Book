@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Bets – {{ game.title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ game.title }}</h1>
+    <p class="text-muted small">{{ game.team1 }} vs {{ game.team2 }} &nbsp;|&nbsp; {{ game.game_time }}</p>
+  </div>
+  <a href="{{ url_for('admin') }}" class="btn btn-ghost">← Back</a>
+</div>
+
+<!-- Summary -->
+<div class="stats-row" style="margin-bottom:2rem">
+  <div class="stat-card">
+    <div class="stat-num">{{ bets|length }}</div>
+    <div class="stat-label">Total Bets</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num">${{ "%.2f"|format(total_wagered) }}</div>
+    <div class="stat-label">Total Wagered</div>
+  </div>
+  <div class="stat-card stat-lost">
+    <div class="stat-num">${{ "%.2f"|format(total_exposure) }}</div>
+    <div class="stat-label">Pending Exposure</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num">
+      {% if game.winner %}{{ game.winner }}{% else %}–{% endif %}
+    </div>
+    <div class="stat-label">ML Result</div>
+  </div>
+  {% if game.spread_result %}
+  <div class="stat-card">
+    <div class="stat-num">{{ game.spread_result }}</div>
+    <div class="stat-label">Spread Result</div>
+  </div>
+  {% endif %}
+</div>
+
+{% if bets %}
+  <!-- Breakdown by pick -->
+  {% set picks = {} %}
+  <div class="table-wrap" style="margin-bottom:2rem">
+    <table class="bet-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Player</th>
+          <th>Type</th>
+          <th>Pick</th>
+          <th>Odds</th>
+          <th>Wager</th>
+          <th>Potential</th>
+          <th>Status</th>
+          <th>Placed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in bets %}
+          <tr class="bet-row-{{ b.status }}">
+            <td class="text-muted small">{{ b.id }}</td>
+            <td><strong>{{ b.username }}</strong></td>
+            <td>
+              {% if b.bet_type == 'spread' %}
+                <span class="badge badge-closed">Spread</span>
+              {% else %}
+                <span class="badge badge-settled">ML</span>
+              {% endif %}
+            </td>
+            <td>{{ b.pick }}</td>
+            <td>{{ b.odds }}x</td>
+            <td>${{ "%.2f"|format(b.amount) }}</td>
+            <td>${{ "%.2f"|format(b.amount * b.odds) }}</td>
+            <td>
+              {% if b.status == 'pending' %}<span class="badge badge-pending">Pending</span>
+              {% elif b.status == 'won' %}<span class="badge badge-won">Won</span>
+              {% elif b.status == 'lost' %}<span class="badge badge-lost">Lost</span>
+              {% elif b.status == 'push' %}<span class="badge badge-closed">Push</span>
+              {% endif %}
+            </td>
+            <td class="text-muted small">{{ b.created_at[5:16] }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="empty-state"><p>No bets placed on this game yet.</p></div>
+{% endif %}
+{% endblock %}

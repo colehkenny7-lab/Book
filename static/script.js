@@ -11,20 +11,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const amountInput = document.getElementById('amount');
   const payoutBox   = document.getElementById('payout-preview');
   const payoutVal   = document.getElementById('payout-value');
-  const odds        = window.GAME_ODDS || {};
+  const oddsData    = window.GAME_ODDS || { moneyline: {}, spread: {} };
 
-  function updatePayout() {
-    const amount = parseFloat(amountInput.value);
-    const picked = document.querySelector('input[name="pick"]:checked');
-    if (!picked || isNaN(amount) || amount <= 0) {
-      payoutBox.style.display = 'none';
-      return;
-    }
-    const o = odds[picked.value];
-    if (!o) { payoutBox.style.display = 'none'; return; }
+  window.updatePayout = function() {
+    const amount  = parseFloat(amountInput ? amountInput.value : 0);
+    const picked  = document.querySelector('input[name="pick"]:checked');
+    const betType = (document.getElementById('bet_type') || {}).value || 'moneyline';
+
+    if (!picked || isNaN(amount) || amount <= 0 || !payoutBox) return;
+
+    const odds = (oddsData[betType] || {})[picked.value];
+    if (!odds) { payoutBox.style.display = 'none'; return; }
+
     payoutBox.style.display = 'block';
-    payoutVal.textContent   = '$' + (amount * o).toFixed(2);
-  }
+    payoutVal.textContent   = '$' + (amount * odds).toFixed(2);
+  };
 
   if (amountInput) {
     amountInput.addEventListener('input', updatePayout);
@@ -42,3 +43,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
 });
+
+// Called from bet.html when user clicks a pick section
+function setBetType(type) {
+  const el = document.getElementById('bet_type');
+  if (el) el.value = type;
+  if (typeof updatePayout === 'function') updatePayout();
+}

@@ -7,6 +7,25 @@
   <a href="{{ url_for('admin_new_game') }}" class="btn btn-primary">+ New Game</a>
 </div>
 
+<!-- EXPOSURE WIDGET -->
+<div class="exposure-bar">
+  <div class="exposure-info">
+    <span class="exposure-label">Current Site Exposure</span>
+    <span class="exposure-value {% if max_exposure and exposure > (max_exposure|float * 0.8) %}exposure-danger{% endif %}">
+      ${{ "%.2f"|format(exposure) }}
+      {% if max_exposure %} / ${{ "%.2f"|format(max_exposure|float) }}{% endif %}
+    </span>
+  </div>
+  <form method="POST" action="{{ url_for('admin_settings') }}" class="exposure-form">
+    <label>Exposure Limit ($)</label>
+    <input type="text" name="max_exposure"
+           value="{{ max_exposure if max_exposure else '' }}"
+           placeholder="No limit"
+           class="form-input form-input-xs" style="width:120px" />
+    <button class="btn btn-ghost btn-xs">Save</button>
+  </form>
+</div>
+
 <!-- GAMES TABLE -->
 <section class="section">
   <h2 class="section-title">Games ({{ games|length }})</h2>
@@ -15,41 +34,62 @@
       <table class="bet-table">
         <thead>
           <tr>
-            <th>ID</th>
             <th>Title</th>
             <th>Teams</th>
-            <th>Odds</th>
+            <th>ML Odds</th>
+            <th>Spread</th>
+            <th>Limits</th>
             <th>Time</th>
             <th>Status</th>
-            <th>Winner</th>
+            <th>Result</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {% for g in games %}
             <tr>
-              <td>{{ g.id }}</td>
-              <td>{{ g.title }}</td>
+              <td><strong>{{ g.title }}</strong></td>
               <td>{{ g.team1 }} vs {{ g.team2 }}</td>
               <td>{{ g.odds1 }} / {{ g.odds2 }}{% if g.odds_draw %} / {{ g.odds_draw }}{% endif %}</td>
+              <td>
+                {% if g.spread1 is not none %}
+                  {{ "%+.1f"|format(g.spread1) }} / {{ "%+.1f"|format(g.spread2) }}
+                  <span class="text-muted small">({{ g.spread_odds1 }}x/{{ g.spread_odds2 }}x)</span>
+                {% else %}–{% endif %}
+              </td>
+              <td class="small">
+                Min ${{ g.min_bet|int }}
+                {% if g.max_bet %} / Max ${{ g.max_bet|int }}{% endif %}
+              </td>
               <td class="small">{{ g.game_time }}</td>
               <td>
                 {% if g.status == 'open' %}<span class="badge badge-open">Open</span>
                 {% elif g.status == 'closed' %}<span class="badge badge-closed">Closed</span>
                 {% else %}<span class="badge badge-settled">Settled</span>{% endif %}
               </td>
-              <td>{{ g.winner or '–' }}</td>
+              <td class="small">
+                {% if g.winner %}ML: <strong>{{ g.winner }}</strong>{% endif %}
+                {% if g.spread_result %}<br>Spread: <strong>{{ g.spread_result }}</strong>{% endif %}
+                {% if not g.winner %}–{% endif %}
+              </td>
               <td class="action-cell">
+                <a href="{{ url_for('admin_game_bets', game_id=g.id) }}" class="btn btn-ghost btn-xs">Bets</a>
                 {% if g.status != 'settled' %}
                   <a href="{{ url_for('admin_edit_game', game_id=g.id) }}" class="btn btn-ghost btn-xs">Edit</a>
                 {% endif %}
                 {% if g.status == 'open' %}
                   <form method="POST" action="{{ url_for('admin_close_game', game_id=g.id) }}" style="display:inline">
-                    <button class="btn btn-warning btn-xs" onclick="return confirm('Close betting for this game?')">Close</button>
+                    <button class="btn btn-warning btn-xs" onclick="return confirm('Close betting?')">Close</button>
                   </form>
                 {% endif %}
                 {% if g.status != 'settled' %}
-                  <button class="btn btn-primary btn-xs" onclick="openSettleModal({{ g.id }}, '{{ g.team1 }}', '{{ g.team2 }}', {{ 'true' if g.odds_draw else 'false' }})">Settle</button>
+                  <button class="btn btn-primary btn-xs"
+                    onclick="openSettleModal(
+                      {{ g.id }},
+                      '{{ g.team1 }}', '{{ g.team2 }}',
+                      {{ 'true' if g.odds_draw else 'false' }},
+                      {{ 'true' if g.spread1 is not none else 'false' }}
+                    )">Settle</button>
                 {% endif %}
               </td>
             </tr>
@@ -68,32 +108,33 @@
   <div class="table-wrap">
     <table class="bet-table">
       <thead>
-        <tr><th>ID</th><th>Username</th><th>Balance</th><th>Role</th><th>Joined</th><th>Top Up</th></tr>
+        <tr><th>Username</th><th>Balance</th><th>Role</th><th>Joined</th><th>Set Balance</th><th>Adjust (+/-)</th></tr>
       </thead>
       <tbody>
         {% for u in users %}
           <tr>
-            <td>{{ u.id }}</td>
-            <td>{{ u.username }}</td>
+            <td><strong>{{ u.username }}</strong></td>
             <td>${{ "%.2f"|format(u.balance) }}</td>
             <td>{{ 'Admin' if u.is_admin else 'Player' }}</td>
             <td class="small">{{ u.created_at[:10] }}</td>
             <td>
               {% if not u.is_admin %}
-                <div style="display:flex;flex-direction:column;gap:.35rem">
-                  <form method="POST" action="{{ url_for('admin_set_balance', user_id=u.id) }}" style="display:flex;gap:.3rem" title="Set exact balance">
-                    <input type="number" name="amount" min="0" step="1"
-                           placeholder="Set to…"
-                           class="form-input form-input-xs" required />
-                    <button class="btn btn-primary btn-xs">Set</button>
-                  </form>
-                  <form method="POST" action="{{ url_for('admin_adjust_balance', user_id=u.id) }}" style="display:flex;gap:.3rem" title="Add or subtract">
-                    <input type="number" name="amount" step="1"
-                           placeholder="+/- amount"
-                           class="form-input form-input-xs" required />
-                    <button class="btn btn-ghost btn-xs">Adjust</button>
-                  </form>
-                </div>
+                <form method="POST" action="{{ url_for('admin_set_balance', user_id=u.id) }}" style="display:flex;gap:.3rem">
+                  <input type="number" name="amount" min="0" step="1"
+                         placeholder="{{ u.balance|int }}"
+                         class="form-input form-input-xs" required />
+                  <button class="btn btn-primary btn-xs">Set</button>
+                </form>
+              {% endif %}
+            </td>
+            <td>
+              {% if not u.is_admin %}
+                <form method="POST" action="{{ url_for('admin_adjust_balance', user_id=u.id) }}" style="display:flex;gap:.3rem">
+                  <input type="number" name="amount" step="1"
+                         placeholder="+/- $"
+                         class="form-input form-input-xs" required />
+                  <button class="btn btn-ghost btn-xs">Go</button>
+                </form>
               {% endif %}
             </td>
           </tr>
@@ -107,9 +148,18 @@
 <div id="settle-modal" class="modal-overlay" style="display:none">
   <div class="modal">
     <h3>Settle Game</h3>
-    <p id="settle-desc">Select the winner:</p>
+
     <form method="POST" id="settle-form">
-      <div class="pick-buttons" id="settle-picks"></div>
+      <div class="form-group">
+        <label>Moneyline Winner</label>
+        <div class="pick-buttons" id="settle-ml-picks"></div>
+      </div>
+
+      <div class="form-group" id="settle-spread-group" style="display:none">
+        <label>Spread Result</label>
+        <div class="pick-buttons" id="settle-spread-picks"></div>
+      </div>
+
       <div style="display:flex;gap:.5rem;margin-top:1rem">
         <button type="submit" class="btn btn-primary">Confirm</button>
         <button type="button" class="btn btn-ghost" onclick="closeSettleModal()">Cancel</button>
@@ -119,19 +169,37 @@
 </div>
 
 <script>
-function openSettleModal(id, team1, team2, hasDraw) {
-  const form  = document.getElementById('settle-form');
-  const picks = document.getElementById('settle-picks');
-  form.action = `/admin/game/${id}/settle`;
-  picks.innerHTML = '';
+function openSettleModal(id, team1, team2, hasDraw, hasSpread) {
+  const form     = document.getElementById('settle-form');
+  const mlPicks  = document.getElementById('settle-ml-picks');
+  const spPicks  = document.getElementById('settle-spread-picks');
+  const spGroup  = document.getElementById('settle-spread-group');
 
-  [team1, team2, ...(hasDraw ? ['Draw'] : [])].forEach(t => {
-    picks.innerHTML += `
-      <label class="pick-label">
-        <input type="radio" name="winner" value="${t}" required />
-        <span class="pick-btn">${t}</span>
-      </label>`;
-  });
+  form.action = `/admin/game/${id}/settle`;
+
+  // Moneyline
+  const mlTeams = [team1, team2, ...(hasDraw ? ['Draw'] : [])];
+  mlPicks.innerHTML = mlTeams.map(t => `
+    <label class="pick-label">
+      <input type="radio" name="winner" value="${t}" required />
+      <span class="pick-btn">${t}</span>
+    </label>`).join('');
+
+  // Spread
+  if (hasSpread) {
+    spGroup.style.display = 'block';
+    spPicks.innerHTML = [team1, team2, 'Push (refund)'].map((t, i) => {
+      const val = i === 2 ? 'push' : t;
+      return `
+        <label class="pick-label">
+          <input type="radio" name="spread_result" value="${val}" />
+          <span class="pick-btn">${t}</span>
+        </label>`;
+    }).join('');
+  } else {
+    spGroup.style.display = 'none';
+    spPicks.innerHTML = '';
+  }
 
   document.getElementById('settle-modal').style.display = 'flex';
 }

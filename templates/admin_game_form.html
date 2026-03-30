@@ -7,15 +7,15 @@
 </div>
 
 <div class="bet-wrap">
-  <div class="bet-card">
+  <div class="bet-card" style="max-width:640px">
     <form method="POST">
-      <div class="form-row">
-        <div class="form-group">
-          <label>Game Title</label>
-          <input type="text" name="title" class="form-input" required
-                 value="{{ game.title if game else '' }}" placeholder="e.g. NBA Finals Game 7" />
-        </div>
+
+      <div class="form-group">
+        <label>Game Title</label>
+        <input type="text" name="title" class="form-input" required
+               value="{{ game.title if game else '' }}" placeholder="e.g. NBA Finals Game 7" />
       </div>
+
       <div class="form-row two-col">
         <div class="form-group">
           <label>Team 1</label>
@@ -28,14 +28,17 @@
                  value="{{ game.team2 if game else '' }}" placeholder="e.g. Celtics" />
         </div>
       </div>
+
+      <!-- MONEYLINE ODDS -->
+      <p class="form-section-label">Moneyline Odds</p>
       <div class="form-row three-col">
         <div class="form-group">
-          <label>Odds Team 1</label>
+          <label>Team 1 Odds</label>
           <input type="number" name="odds1" class="form-input" required step="0.01" min="1"
                  value="{{ game.odds1 if game else '2.00' }}" />
         </div>
         <div class="form-group">
-          <label>Odds Team 2</label>
+          <label>Team 2 Odds</label>
           <input type="number" name="odds2" class="form-input" required step="0.01" min="1"
                  value="{{ game.odds2 if game else '2.00' }}" />
         </div>
@@ -45,6 +48,52 @@
                  value="{{ game.odds_draw if game and game.odds_draw else '' }}" placeholder="–" />
         </div>
       </div>
+
+      <!-- POINT SPREAD -->
+      <p class="form-section-label">Point Spread <small>(optional – leave blank to disable)</small></p>
+      <div class="form-row two-col">
+        <div class="form-group">
+          <label>Team 1 Spread <small>(e.g. -5.5 or +3)</small></label>
+          <input type="number" name="spread1" class="form-input" step="0.5"
+                 value="{{ game.spread1 if game and game.spread1 is not none else '' }}"
+                 placeholder="e.g. -5.5" />
+        </div>
+        <div class="form-group">
+          <label>Team 2 Spread <small>(auto-calculated)</small></label>
+          <input type="number" name="_spread2_display" class="form-input" step="0.5"
+                 value="{{ game.spread2 if game and game.spread2 is not none else '' }}"
+                 placeholder="e.g. +5.5" disabled />
+          <small class="form-hint">Automatically set to opposite of Team 1 spread.</small>
+        </div>
+      </div>
+      <div class="form-row two-col">
+        <div class="form-group">
+          <label>Spread Odds Team 1</label>
+          <input type="number" name="spread_odds1" class="form-input" step="0.01" min="1"
+                 value="{{ game.spread_odds1 if game and game.spread_odds1 else '1.91' }}" />
+        </div>
+        <div class="form-group">
+          <label>Spread Odds Team 2</label>
+          <input type="number" name="spread_odds2" class="form-input" step="0.01" min="1"
+                 value="{{ game.spread_odds2 if game and game.spread_odds2 else '1.91' }}" />
+        </div>
+      </div>
+
+      <!-- BET LIMITS -->
+      <p class="form-section-label">Bet Limits</p>
+      <div class="form-row two-col">
+        <div class="form-group">
+          <label>Min Bet ($)</label>
+          <input type="number" name="min_bet" class="form-input" step="1" min="1"
+                 value="{{ game.min_bet if game and game.min_bet else '1' }}" />
+        </div>
+        <div class="form-group">
+          <label>Max Bet ($) <small>(optional)</small></label>
+          <input type="number" name="max_bet" class="form-input" step="1" min="1"
+                 value="{{ game.max_bet if game and game.max_bet else '' }}" placeholder="No limit" />
+        </div>
+      </div>
+
       <div class="form-row two-col">
         <div class="form-group">
           <label>Game Date &amp; Time</label>
