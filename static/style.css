@@ -628,6 +628,33 @@ a:hover { text-decoration: underline; }
 .pnl-positive { background: #14532d44; border-color: #22c55e55; color: var(--green); }
 .pnl-negative { background: #7f1d1d44; border-color: #ef444455; color: #f87171; }
 
+/* ---- Danger zone ---- */
+.danger-zone {
+  border: 1px solid #ef444455;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.danger-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid #ef444422;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.danger-item:last-child { border-bottom: none; }
+.danger-item > div { flex: 1; }
+.danger-item strong { display: block; margin-bottom: .2rem; }
+.danger-item p { font-size: .85rem; color: var(--muted); margin: 0; }
+.btn-danger {
+  background: #7f1d1d;
+  color: #f87171;
+  border-color: #ef444455;
+  white-space: nowrap;
+}
+.btn-danger:hover { background: #991b1b; }
+
 /* ---- Footer ---- */
 .footer {
   text-align: center;

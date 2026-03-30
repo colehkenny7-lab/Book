@@ -596,6 +596,46 @@ def admin_settings():
     return redirect(url_for("admin"))
 
 
+@app.route("/admin/reset", methods=["POST"])
+@admin_required
+def admin_reset():
+    action = request.form.get("action")
+
+    if action == "clear_finished":
+        # Delete bets on settled/closed games, then delete those games
+        db_exec("""
+            DELETE FROM bets WHERE game_id IN (
+                SELECT id FROM games WHERE status IN ('settled', 'closed')
+            )
+        """)
+        db_exec("DELETE FROM games WHERE status IN ('settled', 'closed')")
+        db_commit()
+        flash("All finished games and their bets have been removed.", "success")
+
+    elif action == "reset_balances":
+        db_exec("UPDATE users SET balance = 0 WHERE is_admin = ? OR is_admin = FALSE",
+                (0,))
+        db_commit()
+        flash("All player balances reset to $0.", "success")
+
+    elif action == "full_reset":
+        db_exec("""
+            DELETE FROM bets WHERE game_id IN (
+                SELECT id FROM games WHERE status IN ('settled', 'closed')
+            )
+        """)
+        db_exec("DELETE FROM games WHERE status IN ('settled', 'closed')")
+        db_exec("DELETE FROM bets")
+        db_exec("UPDATE users SET balance = 0 WHERE is_admin = 0 OR is_admin = FALSE")
+        db_commit()
+        flash("All finished games cleared and all balances reset to $0.", "success")
+
+    else:
+        flash("Unknown action.", "danger")
+
+    return redirect(url_for("admin"))
+
+
 @app.route("/admin/toggle-registration", methods=["POST"])
 @admin_required
 def admin_toggle_registration():

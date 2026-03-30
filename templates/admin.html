@@ -159,6 +159,46 @@
   </div>
 </section>
 
+<!-- DANGER ZONE -->
+<section class="section">
+  <h2 class="section-title" style="color:#f87171">Danger Zone</h2>
+  <div class="danger-zone">
+    <div class="danger-item">
+      <div>
+        <strong>Clear Finished Games</strong>
+        <p>Deletes all settled and closed games and their bets. Open games stay.</p>
+      </div>
+      <form method="POST" action="{{ url_for('admin_reset') }}"
+            onsubmit="return confirm('Delete all finished games and their bets?')">
+        <input type="hidden" name="action" value="clear_finished" />
+        <button class="btn btn-danger">Clear Finished</button>
+      </form>
+    </div>
+    <div class="danger-item">
+      <div>
+        <strong>Reset All Balances</strong>
+        <p>Sets every player's balance to $0. Games and bets stay.</p>
+      </div>
+      <form method="POST" action="{{ url_for('admin_reset') }}"
+            onsubmit="return confirm('Reset ALL player balances to $0?')">
+        <input type="hidden" name="action" value="reset_balances" />
+        <button class="btn btn-danger">Reset Balances</button>
+      </form>
+    </div>
+    <div class="danger-item">
+      <div>
+        <strong>Full Reset</strong>
+        <p>Clear all finished games AND reset all balances to $0. Fresh start.</p>
+      </div>
+      <form method="POST" action="{{ url_for('admin_reset') }}"
+            onsubmit="return confirm('Full reset — clear finished games AND reset all balances?')">
+        <input type="hidden" name="action" value="full_reset" />
+        <button class="btn btn-danger">Full Reset</button>
+      </form>
+    </div>
+  </div>
+</section>
+
 <!-- SETTLE MODAL -->
 <div id="settle-modal" class="modal-overlay" style="display:none">
   <div class="modal">
