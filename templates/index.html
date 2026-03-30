@@ -20,62 +20,88 @@
   </div>
 </section>
 
-<section class="section">
-  <h2 class="section-title">Open Games</h2>
-
-  {% if games %}
-    <div class="games-grid">
-      {% for g in games %}
-        <div class="game-card">
-          <div class="game-header">
-            <span class="game-title">{{ g.title }}</span>
-            <span class="badge badge-open">Open</span>
-          </div>
-          <div class="matchup">
-            <div class="team">
-              <span class="team-name">{{ g.team1 }}</span>
-              <span class="odds-pill">{{ g.odds1 }}x</span>
+<div class="home-grid">
+  <!-- LEFT: Open Games -->
+  <section class="section">
+    <h2 class="section-title">Open Games</h2>
+    {% if games %}
+      <div class="games-grid">
+        {% for g in games %}
+          <div class="game-card">
+            <div class="game-header">
+              <span class="game-title">{{ g.title }}</span>
+              <div style="display:flex;gap:.4rem;align-items:center">
+                {% if g.bet_count %}<span class="bet-count-badge">{{ g.bet_count }} bet{{ 's' if g.bet_count != 1 }}</span>{% endif %}
+                <span class="badge badge-open">Open</span>
+              </div>
             </div>
-            <span class="vs">VS</span>
-            <div class="team team-right">
-              <span class="odds-pill">{{ g.odds2 }}x</span>
-              <span class="team-name">{{ g.team2 }}</span>
+            <div class="matchup">
+              <div class="team">
+                <span class="team-name">{{ g.team1 }}</span>
+                <span class="odds-pill">{{ g.odds1 }}x</span>
+              </div>
+              <span class="vs">VS</span>
+              <div class="team team-right">
+                <span class="odds-pill">{{ g.odds2 }}x</span>
+                <span class="team-name">{{ g.team2 }}</span>
+              </div>
             </div>
-          </div>
-          {% if g.odds_draw %}
-            <div class="draw-row">
-              <span>Draw</span>
-              <span class="odds-pill">{{ g.odds_draw }}x</span>
-            </div>
-          {% endif %}
-          <div class="game-footer">
-            <span class="game-time">{{ g.game_time }}</span>
-            {% if current_user %}
-              <a href="{{ url_for('place_bet', game_id=g.id) }}" class="btn btn-primary btn-sm">Bet Now</a>
-            {% else %}
-              <a href="{{ url_for('login') }}" class="btn btn-ghost btn-sm">Login to Bet</a>
+            {% if g.odds_draw %}
+              <div class="draw-row"><span>Draw</span><span class="odds-pill">{{ g.odds_draw }}x</span></div>
             {% endif %}
+            {% if g.spread1 is not none %}
+              <div class="draw-row">
+                <span>Spread: {{ g.team1 }} {{ "%+.1f"|format(g.spread1) }}</span>
+                <span class="odds-pill">{{ g.spread_odds1 }}x</span>
+              </div>
+            {% endif %}
+            <div class="game-footer">
+              <span class="game-time">{{ g.game_time }}</span>
+              {% if current_user %}
+                <a href="{{ url_for('place_bet', game_id=g.id) }}" class="btn btn-primary btn-sm">Bet Now</a>
+              {% else %}
+                <a href="{{ url_for('login') }}" class="btn btn-ghost btn-sm">Login to Bet</a>
+              {% endif %}
+            </div>
           </div>
-        </div>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="empty-state">
-      <p>No open games right now. Check back soon!</p>
-    </div>
-  {% endif %}
-</section>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state"><p>No open games right now. Check back soon!</p></div>
+    {% endif %}
+  </section>
+
+  <!-- RIGHT: Activity Feed -->
+  <aside class="activity-panel">
+    <h2 class="section-title">Recent Activity</h2>
+    {% if activity %}
+      <ul class="activity-list">
+        {% for a in activity %}
+          <li class="activity-item">
+            <span class="activity-user">{{ a.username }}</span>
+            bet <strong>${{ "%.0f"|format(a.amount) }}</strong> on
+            <span class="activity-pick">{{ a.pick }}{% if a.bet_type == 'spread' %} (spread){% endif %}</span>
+            <span class="activity-game">{{ a.title }}</span>
+            <span class="activity-time">{{ a.created_at | string | truncate(16, True, '') }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-muted" style="padding:1rem">No bets yet. Be the first!</p>
+    {% endif %}
+  </aside>
+</div>
 
 <section class="section features">
   <div class="feature">
     <div class="feature-icon">🏆</div>
     <h3>Free Chips</h3>
-    <p>Every player starts with $1,000 in chips at no cost.</p>
+    <p>Admin loads everyone up with chips at no cost.</p>
   </div>
   <div class="feature">
     <div class="feature-icon">📊</div>
     <h3>Live Odds</h3>
-    <p>Admin sets odds for every match. Place your pick before it closes.</p>
+    <p>Admin sets odds and spreads for every match.</p>
   </div>
   <div class="feature">
     <div class="feature-icon">🥇</div>

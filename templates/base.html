@@ -21,6 +21,7 @@
           <a href="{{ url_for('admin') }}" class="admin-link">Admin</a>
         {% endif %}
         <span class="balance-badge">${{ "%.2f"|format(current_user.balance) }}</span>
+        <a href="{{ url_for('change_password') }}" class="btn btn-ghost btn-sm">Password</a>
         <a href="{{ url_for('logout') }}" class="btn btn-ghost">Logout</a>
       {% else %}
         <a href="{{ url_for('leaderboard') }}">Leaderboard</a>

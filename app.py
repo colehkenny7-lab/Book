@@ -226,12 +226,14 @@ def _init_postgres():
 
 
 def _seed_defaults():
-    if is_postgres():
-        db_exec("INSERT INTO site_settings (key, value) VALUES (?, NULL) ON CONFLICT DO NOTHING",
-                ("max_exposure",))
-    else:
-        db_exec("INSERT OR IGNORE INTO site_settings (key, value) VALUES (?, NULL)",
-                ("max_exposure",))
+    defaults = [("max_exposure", None), ("registration_open", "1")]
+    for key, val in defaults:
+        if is_postgres():
+            db_exec("INSERT INTO site_settings (key, value) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                    (key, val))
+        else:
+            db_exec("INSERT OR IGNORE INTO site_settings (key, value) VALUES (?, ?)",
+                    (key, val))
     db_commit()
 
     if not db_one("SELECT id FROM users WHERE is_admin = ?", (True if is_postgres() else 1,)):
@@ -300,6 +302,10 @@ def inject_user():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    if get_setting("registration_open") != "1":
+        flash("Registration is currently closed. Ask the admin for access.", "warning")
+        return redirect(url_for("login"))
+
     if request.method == "POST":
         username = request.form["username"].strip()
         password = request.form["password"]
@@ -354,14 +360,62 @@ def logout():
     return redirect(url_for("index"))
 
 
+@app.route("/change-password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    if request.method == "POST":
+        current  = request.form.get("current_password", "")
+        new_pw   = request.form.get("new_password", "")
+        confirm  = request.form.get("confirm_password", "")
+        user     = current_user()
+
+        if not check_password_hash(user["password"], current):
+            flash("Current password is incorrect.", "danger")
+            return render_template("change_password.html")
+        if len(new_pw) < 6:
+            flash("New password must be at least 6 characters.", "danger")
+            return render_template("change_password.html")
+        if new_pw != confirm:
+            flash("New passwords do not match.", "danger")
+            return render_template("change_password.html")
+
+        db_exec("UPDATE users SET password=? WHERE id=?",
+                (generate_password_hash(new_pw), user["id"]))
+        db_commit()
+        flash("Password changed successfully.", "success")
+        return redirect(url_for("index"))
+
+    return render_template("change_password.html")
+
+
 # ---------------------------------------------------------------------------
 # Routes – Public
 # ---------------------------------------------------------------------------
 
 @app.route("/")
 def index():
-    games = db_all("SELECT * FROM games WHERE status='open' ORDER BY game_time ASC")
-    return render_template("index.html", games=games)
+    games = db_all("""
+        SELECT g.*,
+               COUNT(b.id) AS bet_count
+        FROM games g
+        LEFT JOIN bets b ON b.game_id = g.id
+        WHERE g.status = 'open'
+        GROUP BY g.id, g.title, g.team1, g.team2, g.odds1, g.odds2, g.odds_draw,
+                 g.spread1, g.spread2, g.spread_odds1, g.spread_odds2,
+                 g.min_bet, g.max_bet, g.game_time, g.status, g.winner,
+                 g.spread_result, g.created_at
+        ORDER BY g.game_time ASC
+    """)
+    activity = db_all("""
+        SELECT b.amount, b.pick, b.bet_type, b.created_at,
+               u.username, g.title, g.team1, g.team2
+        FROM bets b
+        JOIN users u ON u.id = b.user_id
+        JOIN games g ON g.id = b.game_id
+        ORDER BY b.created_at DESC
+        LIMIT 15
+    """)
+    return render_template("index.html", games=games, activity=activity)
 
 
 @app.route("/leaderboard")
@@ -388,9 +442,22 @@ def leaderboard():
 @app.route("/games")
 @login_required
 def games():
-    open_games    = db_all("SELECT * FROM games WHERE status='open'    ORDER BY game_time ASC")
-    closed_games  = db_all("SELECT * FROM games WHERE status='closed'  ORDER BY game_time DESC")
-    settled_games = db_all("SELECT * FROM games WHERE status='settled' ORDER BY game_time DESC LIMIT 20")
+    def with_counts(status_clause):
+        return db_all(f"""
+            SELECT g.*, COUNT(b.id) AS bet_count
+            FROM games g
+            LEFT JOIN bets b ON b.game_id = g.id
+            WHERE {status_clause}
+            GROUP BY g.id, g.title, g.team1, g.team2, g.odds1, g.odds2, g.odds_draw,
+                     g.spread1, g.spread2, g.spread_odds1, g.spread_odds2,
+                     g.min_bet, g.max_bet, g.game_time, g.status, g.winner,
+                     g.spread_result, g.created_at
+            ORDER BY g.game_time {'ASC' if 'open' in status_clause else 'DESC'}
+            {'LIMIT 20' if 'settled' in status_clause else ''}
+        """)
+    open_games    = with_counts("g.status='open'")
+    closed_games  = with_counts("g.status='closed'")
+    settled_games = with_counts("g.status='settled'")
     return render_template("games.html", open_games=open_games,
                            closed_games=closed_games, settled_games=settled_games)
 
@@ -501,10 +568,12 @@ def my_bets():
 def admin():
     games        = db_all("SELECT * FROM games ORDER BY created_at DESC")
     users        = db_all("SELECT id, username, balance, is_admin, created_at FROM users ORDER BY created_at DESC")
-    exposure     = get_current_exposure()
-    max_exposure = get_setting("max_exposure")
+    exposure          = get_current_exposure()
+    max_exposure      = get_setting("max_exposure")
+    registration_open = get_setting("registration_open") == "1"
     return render_template("admin.html", games=games, users=users,
-                           exposure=exposure, max_exposure=max_exposure)
+                           exposure=exposure, max_exposure=max_exposure,
+                           registration_open=registration_open)
 
 
 @app.route("/admin/settings", methods=["POST"])
@@ -524,6 +593,18 @@ def admin_settings():
         except ValueError:
             flash("Invalid exposure limit.", "danger")
     db_commit()
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/toggle-registration", methods=["POST"])
+@admin_required
+def admin_toggle_registration():
+    current = get_setting("registration_open")
+    new_val = "0" if current == "1" else "1"
+    db_exec("UPDATE site_settings SET value=? WHERE key='registration_open'", (new_val,))
+    db_commit()
+    state = "opened" if new_val == "1" else "locked"
+    flash(f"Registration {state}.", "success")
     return redirect(url_for("admin"))
 
 

@@ -7,6 +7,21 @@
   <a href="{{ url_for('admin_new_game') }}" class="btn btn-primary">+ New Game</a>
 </div>
 
+<!-- REGISTRATION LOCK -->
+<div class="exposure-bar" style="margin-bottom:1rem">
+  <div class="exposure-info">
+    <span class="exposure-label">Registration</span>
+    <span class="exposure-value" style="font-size:1rem;color:{{ 'var(--green)' if registration_open else 'var(--red)' }}">
+      {{ 'Open – anyone can sign up' if registration_open else 'Locked – new signups blocked' }}
+    </span>
+  </div>
+  <form method="POST" action="{{ url_for('admin_toggle_registration') }}">
+    <button class="btn btn-sm {% if registration_open %}btn-warning{% else %}btn-primary{% endif %}">
+      {{ 'Lock Registration' if registration_open else 'Open Registration' }}
+    </button>
+  </form>
+</div>
+
 <!-- EXPOSURE WIDGET -->
 <div class="exposure-bar">
   <div class="exposure-info">

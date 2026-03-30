@@ -562,6 +562,72 @@ a:hover { text-decoration: underline; }
   margin-bottom: .75rem;
 }
 
+/* ---- Home grid (games + activity side by side) ---- */
+.home-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 2rem;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .home-grid { grid-template-columns: 1fr; }
+  .activity-panel { order: -1; }
+}
+
+/* ---- Activity feed ---- */
+.activity-panel {
+  position: sticky;
+  top: 80px;
+}
+.activity-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.activity-item {
+  padding: .65rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: .85rem;
+  line-height: 1.5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .4rem;
+  align-items: baseline;
+}
+.activity-item:last-child { border-bottom: none; }
+.activity-user  { font-weight: 700; color: var(--primary); }
+.activity-pick  { font-weight: 700; color: var(--accent); }
+.activity-game  { color: var(--muted); font-size: .8rem; width: 100%; }
+.activity-time  { color: var(--muted); font-size: .75rem; margin-left: auto; }
+
+/* ---- Bet count badge ---- */
+.bet-count-badge {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 600;
+  padding: .15rem .5rem;
+  border-radius: 20px;
+}
+
+/* ---- P&L banner ---- */
+.pnl-banner {
+  padding: .85rem 1.25rem;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  border: 1px solid transparent;
+}
+.pnl-positive { background: #14532d44; border-color: #22c55e55; color: var(--green); }
+.pnl-negative { background: #7f1d1d44; border-color: #ef444455; color: #f87171; }
+
 /* ---- Footer ---- */
 .footer {
   text-align: center;

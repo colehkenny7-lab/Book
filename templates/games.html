@@ -15,7 +15,10 @@
         <div class="game-card">
           <div class="game-header">
             <span class="game-title">{{ g.title }}</span>
-            <span class="badge badge-open">Open</span>
+            <div style="display:flex;gap:.4rem;align-items:center">
+              {% if g.bet_count %}<span class="bet-count-badge">{{ g.bet_count }} bet{{ 's' if g.bet_count != 1 }}</span>{% endif %}
+              <span class="badge badge-open">Open</span>
+            </div>
           </div>
           <div class="matchup">
             <div class="team">

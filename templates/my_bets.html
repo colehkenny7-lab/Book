@@ -8,15 +8,46 @@
 </div>
 
 {% if bets %}
-  <!-- Stats summary -->
-  {% set pending_count = bets | selectattr('status', 'eq', 'pending') | list | length %}
-  {% set won_count     = bets | selectattr('status', 'eq', 'won')     | list | length %}
-  {% set lost_count    = bets | selectattr('status', 'eq', 'lost')    | list | length %}
+  {% set pending_bets = bets | selectattr('status', 'eq', 'pending') | list %}
+  {% set won_bets     = bets | selectattr('status', 'eq', 'won')     | list %}
+  {% set lost_bets    = bets | selectattr('status', 'eq', 'lost')    | list %}
+
+  {% set total_wagered  = bets | sum(attribute='amount') %}
+  {% set total_returned = won_bets | sum(attribute='payout') %}
+  {% set net            = total_returned - total_wagered + (pending_bets | sum(attribute='amount')) %}
+
   <div class="stats-row">
-    <div class="stat-card"><div class="stat-num">{{ bets|length }}</div><div class="stat-label">Total Bets</div></div>
-    <div class="stat-card stat-pending"><div class="stat-num">{{ pending_count }}</div><div class="stat-label">Pending</div></div>
-    <div class="stat-card stat-won"><div class="stat-num">{{ won_count }}</div><div class="stat-label">Won</div></div>
-    <div class="stat-card stat-lost"><div class="stat-num">{{ lost_count }}</div><div class="stat-label">Lost</div></div>
+    <div class="stat-card">
+      <div class="stat-num">{{ bets|length }}</div>
+      <div class="stat-label">Total Bets</div>
+    </div>
+    <div class="stat-card stat-pending">
+      <div class="stat-num">{{ pending_bets|length }}</div>
+      <div class="stat-label">Pending</div>
+    </div>
+    <div class="stat-card stat-won">
+      <div class="stat-num">{{ won_bets|length }}</div>
+      <div class="stat-label">Won</div>
+    </div>
+    <div class="stat-card stat-lost">
+      <div class="stat-num">{{ lost_bets|length }}</div>
+      <div class="stat-label">Lost</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">${{ "%.0f"|format(total_wagered) }}</div>
+      <div class="stat-label">Total Wagered</div>
+    </div>
+    <div class="stat-card {% if total_returned >= total_wagered %}stat-won{% else %}stat-lost{% endif %}">
+      <div class="stat-num">${{ "%.0f"|format(total_returned) }}</div>
+      <div class="stat-label">Total Returned</div>
+    </div>
+  </div>
+
+  <!-- Net P&L banner -->
+  {% set settled_wagered = (won_bets | sum(attribute='amount')) + (lost_bets | sum(attribute='amount')) %}
+  {% set net_pl = total_returned - settled_wagered %}
+  <div class="pnl-banner {% if net_pl >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
+    Net P&amp;L (settled): <strong>{{ '+' if net_pl >= 0 else '' }}${{ "%.2f"|format(net_pl) }}</strong>
   </div>
 
   <div class="table-wrap">
@@ -24,6 +55,7 @@
       <thead>
         <tr>
           <th>Game</th>
+          <th>Type</th>
           <th>Pick</th>
           <th>Odds</th>
           <th>Wager</th>
@@ -36,6 +68,13 @@
         {% for b in bets %}
           <tr class="bet-row-{{ b.status }}">
             <td>{{ b.title }}</td>
+            <td>
+              {% if b.bet_type == 'spread' %}
+                <span class="badge badge-closed" style="font-size:.7rem">Spread</span>
+              {% else %}
+                <span class="badge badge-settled" style="font-size:.7rem">ML</span>
+              {% endif %}
+            </td>
             <td><strong>{{ b.pick }}</strong></td>
             <td>{{ b.odds }}x</td>
             <td>${{ "%.2f"|format(b.amount) }}</td>
@@ -44,20 +83,20 @@
                 <span class="text-won">+${{ "%.2f"|format(b.payout) }}</span>
               {% elif b.status == 'lost' %}
                 <span class="text-lost">-${{ "%.2f"|format(b.amount) }}</span>
+              {% elif b.status == 'push' %}
+                <span class="text-muted">Push</span>
               {% else %}
                 <span class="text-muted">${{ "%.2f"|format(b.amount * b.odds) }}</span>
               {% endif %}
             </td>
             <td>
-              {% if b.status == 'pending' %}
-                <span class="badge badge-pending">Pending</span>
-              {% elif b.status == 'won' %}
-                <span class="badge badge-won">Won</span>
-              {% else %}
-                <span class="badge badge-lost">Lost</span>
+              {% if b.status == 'pending' %}<span class="badge badge-pending">Pending</span>
+              {% elif b.status == 'won' %}<span class="badge badge-won">Won</span>
+              {% elif b.status == 'lost' %}<span class="badge badge-lost">Lost</span>
+              {% elif b.status == 'push' %}<span class="badge badge-closed">Push</span>
               {% endif %}
             </td>
-            <td class="text-muted small">{{ b.created_at[:10] }}</td>
+            <td class="text-muted small">{{ b.created_at | string | truncate(10, True, '') }}</td>
           </tr>
         {% endfor %}
       </tbody>
