@@ -10,20 +10,29 @@ from werkzeug.security import check_password_hash, generate_password_hash
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-me-in-production-please")
 
-DATABASE = os.path.join(os.path.dirname(__file__), "betting.db")
+DATABASE     = os.path.join(os.path.dirname(__file__), "betting.db")
+DATABASE_URL = os.environ.get("DATABASE_URL")  # set by Render automatically
 STARTING_BALANCE = 0.0
 
 
 # ---------------------------------------------------------------------------
-# Database helpers
+# Database – dual SQLite / PostgreSQL support
 # ---------------------------------------------------------------------------
 
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DATABASE)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA journal_mode=WAL")
-        g.db.execute("PRAGMA foreign_keys=ON")
+        if DATABASE_URL:
+            import psycopg2
+            import psycopg2.extras
+            url = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+            g.db      = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
+            g.db_type = "postgres"
+        else:
+            g.db = sqlite3.connect(DATABASE)
+            g.db.row_factory = sqlite3.Row
+            g.db.execute("PRAGMA journal_mode=WAL")
+            g.db.execute("PRAGMA foreign_keys=ON")
+            g.db_type = "sqlite"
     return g.db
 
 
@@ -34,102 +43,216 @@ def close_db(exc=None):
         db.close()
 
 
+def is_postgres():
+    get_db()
+    return g.db_type == "postgres"
+
+
+def qmark(sql):
+    """Convert ? placeholders to %s for PostgreSQL."""
+    return sql.replace("?", "%s") if is_postgres() else sql
+
+
+def db_exec(sql, params=()):
+    db  = get_db()
+    sql = qmark(sql)
+    if is_postgres():
+        cur = db.cursor()
+        cur.execute(sql, params)
+        return cur
+    return db.execute(sql, params)
+
+
+def db_one(sql, params=()):
+    return db_exec(sql, params).fetchone()
+
+
+def db_all(sql, params=()):
+    return db_exec(sql, params).fetchall()
+
+
+def db_commit():
+    get_db().commit()
+
+
+# ---------------------------------------------------------------------------
+# DB initialisation
+# ---------------------------------------------------------------------------
+
 def init_db():
+    if is_postgres():
+        _init_postgres()
+    else:
+        _init_sqlite()
+    _seed_defaults()
+
+
+def _init_sqlite():
     db = get_db()
     db.executescript("""
         CREATE TABLE IF NOT EXISTS users (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            username    TEXT    NOT NULL UNIQUE,
-            password    TEXT    NOT NULL,
-            balance     REAL    NOT NULL DEFAULT 0.0,
-            is_admin    INTEGER NOT NULL DEFAULT 0,
-            created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            username   TEXT    NOT NULL UNIQUE,
+            password   TEXT    NOT NULL,
+            balance    REAL    NOT NULL DEFAULT 0.0,
+            is_admin   INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT    NOT NULL DEFAULT (datetime('now'))
         );
-
         CREATE TABLE IF NOT EXISTS games (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            title         TEXT    NOT NULL,
-            team1         TEXT    NOT NULL,
-            team2         TEXT    NOT NULL,
-            odds1         REAL    NOT NULL DEFAULT 2.0,
-            odds2         REAL    NOT NULL DEFAULT 2.0,
+            title         TEXT NOT NULL,
+            team1         TEXT NOT NULL,
+            team2         TEXT NOT NULL,
+            odds1         REAL NOT NULL DEFAULT 2.0,
+            odds2         REAL NOT NULL DEFAULT 2.0,
             odds_draw     REAL,
             spread1       REAL,
             spread2       REAL,
-            spread_odds1  REAL    DEFAULT 1.91,
-            spread_odds2  REAL    DEFAULT 1.91,
-            min_bet       REAL    DEFAULT 1.0,
+            spread_odds1  REAL DEFAULT 1.91,
+            spread_odds2  REAL DEFAULT 1.91,
+            min_bet       REAL DEFAULT 1.0,
             max_bet       REAL,
-            game_time     TEXT    NOT NULL,
-            status        TEXT    NOT NULL DEFAULT 'open',
+            game_time     TEXT NOT NULL,
+            status        TEXT NOT NULL DEFAULT 'open',
             winner        TEXT,
             spread_result TEXT,
-            created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+            created_at    TEXT NOT NULL DEFAULT (datetime('now'))
         );
-
         CREATE TABLE IF NOT EXISTS bets (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id     INTEGER NOT NULL REFERENCES users(id),
-            game_id     INTEGER NOT NULL REFERENCES games(id),
-            pick        TEXT    NOT NULL,
-            bet_type    TEXT    NOT NULL DEFAULT 'moneyline',
-            amount      REAL    NOT NULL,
-            odds        REAL    NOT NULL,
-            payout      REAL,
-            status      TEXT    NOT NULL DEFAULT 'pending',
-            created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL REFERENCES users(id),
+            game_id    INTEGER NOT NULL REFERENCES games(id),
+            pick       TEXT    NOT NULL,
+            bet_type   TEXT    NOT NULL DEFAULT 'moneyline',
+            amount     REAL    NOT NULL,
+            odds       REAL    NOT NULL,
+            payout     REAL,
+            status     TEXT    NOT NULL DEFAULT 'pending',
+            created_at TEXT    NOT NULL DEFAULT (datetime('now'))
         );
-
         CREATE TABLE IF NOT EXISTS site_settings (
             key   TEXT PRIMARY KEY,
             value TEXT
         );
     """)
     db.commit()
-
-    # Migrate existing DBs – add columns if they don't exist yet
-    migrations = [
-        ("games",  "spread1",      "REAL"),
-        ("games",  "spread2",      "REAL"),
-        ("games",  "spread_odds1", "REAL DEFAULT 1.91"),
-        ("games",  "spread_odds2", "REAL DEFAULT 1.91"),
-        ("games",  "min_bet",      "REAL DEFAULT 1.0"),
-        ("games",  "max_bet",      "REAL"),
-        ("games",  "spread_result","TEXT"),
-        ("bets",   "bet_type",     "TEXT DEFAULT 'moneyline'"),
-    ]
-    for table, col, defn in migrations:
+    # Migrate older SQLite DBs
+    for table, col, defn in [
+        ("games", "spread1",      "REAL"),
+        ("games", "spread2",      "REAL"),
+        ("games", "spread_odds1", "REAL DEFAULT 1.91"),
+        ("games", "spread_odds2", "REAL DEFAULT 1.91"),
+        ("games", "min_bet",      "REAL DEFAULT 1.0"),
+        ("games", "max_bet",      "REAL"),
+        ("games", "spread_result","TEXT"),
+        ("bets",  "bet_type",     "TEXT DEFAULT 'moneyline'"),
+    ]:
         try:
             db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {defn}")
             db.commit()
         except Exception:
-            pass  # column already exists
+            pass
 
-    # Default site settings
-    db.execute("INSERT OR IGNORE INTO site_settings (key, value) VALUES ('max_exposure', NULL)")
-    db.commit()
 
-    # Default admin
-    admin = db.execute("SELECT id FROM users WHERE is_admin=1").fetchone()
-    if not admin:
-        db.execute(
-            "INSERT INTO users (username, password, balance, is_admin) VALUES (?,?,?,1)",
-            ("admin", generate_password_hash("admin123"), STARTING_BALANCE),
+def _init_postgres():
+    db_exec("""
+        CREATE TABLE IF NOT EXISTS users (
+            id         SERIAL PRIMARY KEY,
+            username   TEXT   NOT NULL UNIQUE,
+            password   TEXT   NOT NULL,
+            balance    FLOAT  NOT NULL DEFAULT 0.0,
+            is_admin   BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
         )
-        db.commit()
+    """)
+    db_exec("""
+        CREATE TABLE IF NOT EXISTS games (
+            id            SERIAL PRIMARY KEY,
+            title         TEXT  NOT NULL,
+            team1         TEXT  NOT NULL,
+            team2         TEXT  NOT NULL,
+            odds1         FLOAT NOT NULL DEFAULT 2.0,
+            odds2         FLOAT NOT NULL DEFAULT 2.0,
+            odds_draw     FLOAT,
+            spread1       FLOAT,
+            spread2       FLOAT,
+            spread_odds1  FLOAT DEFAULT 1.91,
+            spread_odds2  FLOAT DEFAULT 1.91,
+            min_bet       FLOAT DEFAULT 1.0,
+            max_bet       FLOAT,
+            game_time     TEXT  NOT NULL,
+            status        TEXT  NOT NULL DEFAULT 'open',
+            winner        TEXT,
+            spread_result TEXT,
+            created_at    TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    """)
+    db_exec("""
+        CREATE TABLE IF NOT EXISTS bets (
+            id         SERIAL PRIMARY KEY,
+            user_id    INTEGER NOT NULL REFERENCES users(id),
+            game_id    INTEGER NOT NULL REFERENCES games(id),
+            pick       TEXT    NOT NULL,
+            bet_type   TEXT    NOT NULL DEFAULT 'moneyline',
+            amount     FLOAT   NOT NULL,
+            odds       FLOAT   NOT NULL,
+            payout     FLOAT,
+            status     TEXT    NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    """)
+    db_exec("""
+        CREATE TABLE IF NOT EXISTS site_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+    # Safe column migrations for existing Postgres DBs
+    for table, col, defn in [
+        ("games", "spread1",      "FLOAT"),
+        ("games", "spread2",      "FLOAT"),
+        ("games", "spread_odds1", "FLOAT DEFAULT 1.91"),
+        ("games", "spread_odds2", "FLOAT DEFAULT 1.91"),
+        ("games", "min_bet",      "FLOAT DEFAULT 1.0"),
+        ("games", "max_bet",      "FLOAT"),
+        ("games", "spread_result","TEXT"),
+        ("bets",  "bet_type",     "TEXT DEFAULT 'moneyline'"),
+    ]:
+        try:
+            db_exec(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {defn}")
+        except Exception:
+            pass
+    db_commit()
+
+
+def _seed_defaults():
+    if is_postgres():
+        db_exec("INSERT INTO site_settings (key, value) VALUES (?, NULL) ON CONFLICT DO NOTHING",
+                ("max_exposure",))
+    else:
+        db_exec("INSERT OR IGNORE INTO site_settings (key, value) VALUES (?, NULL)",
+                ("max_exposure",))
+    db_commit()
+
+    if not db_one("SELECT id FROM users WHERE is_admin = ?", (True if is_postgres() else 1,)):
+        db_exec(
+            "INSERT INTO users (username, password, balance, is_admin) VALUES (?,?,?,?)",
+            ("admin", generate_password_hash("admin123"), STARTING_BALANCE,
+             True if is_postgres() else 1),
+        )
+        db_commit()
 
 
 def get_setting(key):
-    row = get_db().execute("SELECT value FROM site_settings WHERE key=?", (key,)).fetchone()
+    row = db_one("SELECT value FROM site_settings WHERE key=?", (key,))
     return row["value"] if row else None
 
 
 def get_current_exposure():
-    """Total potential profit owed to bettors across all pending bets."""
-    row = get_db().execute(
+    row = db_one(
         "SELECT COALESCE(SUM(amount * (odds - 1)), 0) AS exp FROM bets WHERE status='pending'"
-    ).fetchone()
-    return row["exp"]
+    )
+    return float(row["exp"])
 
 
 # ---------------------------------------------------------------------------
@@ -152,8 +275,7 @@ def admin_required(f):
         if "user_id" not in session:
             flash("Please log in first.", "warning")
             return redirect(url_for("login"))
-        db = get_db()
-        user = db.execute("SELECT is_admin FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        user = db_one("SELECT is_admin FROM users WHERE id=?", (session["user_id"],))
         if not user or not user["is_admin"]:
             flash("Admin access required.", "danger")
             return redirect(url_for("index"))
@@ -164,7 +286,7 @@ def admin_required(f):
 def current_user():
     if "user_id" not in session:
         return None
-    return get_db().execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+    return db_one("SELECT * FROM users WHERE id=?", (session["user_id"],))
 
 
 @app.context_processor
@@ -192,17 +314,15 @@ def register():
         if len(password) < 6:
             flash("Password must be at least 6 characters.", "danger")
             return render_template("register.html")
-
-        db = get_db()
-        if db.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone():
+        if db_one("SELECT id FROM users WHERE username=?", (username,)):
             flash("Username already taken.", "danger")
             return render_template("register.html")
 
-        db.execute(
+        db_exec(
             "INSERT INTO users (username, password, balance) VALUES (?,?,?)",
             (username, generate_password_hash(password), STARTING_BALANCE),
         )
-        db.commit()
+        db_commit()
         flash(f"Welcome, {username}! Your balance starts at $0 — ask the admin to load you up.", "success")
         return redirect(url_for("login"))
 
@@ -214,8 +334,7 @@ def login():
     if request.method == "POST":
         username = request.form["username"].strip()
         password = request.form["password"]
-        db   = get_db()
-        user = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+        user = db_one("SELECT * FROM users WHERE username=?", (username,))
         if not user or not check_password_hash(user["password"], password):
             flash("Invalid username or password.", "danger")
             return render_template("login.html")
@@ -241,15 +360,13 @@ def logout():
 
 @app.route("/")
 def index():
-    db    = get_db()
-    games = db.execute("SELECT * FROM games WHERE status='open' ORDER BY game_time ASC").fetchall()
+    games = db_all("SELECT * FROM games WHERE status='open' ORDER BY game_time ASC")
     return render_template("index.html", games=games)
 
 
 @app.route("/leaderboard")
 def leaderboard():
-    db = get_db()
-    users = db.execute("""
+    users = db_all("""
         SELECT u.username, u.balance,
                COUNT(b.id)                                              AS total_bets,
                SUM(CASE WHEN b.status='won'  THEN 1 ELSE 0 END)        AS wins,
@@ -257,10 +374,10 @@ def leaderboard():
                COALESCE(SUM(CASE WHEN b.status='won' THEN b.payout ELSE 0 END), 0) AS total_won
         FROM users u
         LEFT JOIN bets b ON b.user_id = u.id
-        WHERE u.is_admin = 0
-        GROUP BY u.id
+        WHERE u.is_admin = FALSE OR u.is_admin = 0
+        GROUP BY u.id, u.username, u.balance
         ORDER BY u.balance DESC
-    """).fetchall()
+    """)
     return render_template("leaderboard.html", users=users)
 
 
@@ -271,22 +388,17 @@ def leaderboard():
 @app.route("/games")
 @login_required
 def games():
-    db = get_db()
-    open_games    = db.execute("SELECT * FROM games WHERE status='open'    ORDER BY game_time ASC").fetchall()
-    closed_games  = db.execute("SELECT * FROM games WHERE status='closed'  ORDER BY game_time DESC").fetchall()
-    settled_games = db.execute("SELECT * FROM games WHERE status='settled' ORDER BY game_time DESC LIMIT 20").fetchall()
-    return render_template("games.html",
-                           open_games=open_games,
-                           closed_games=closed_games,
-                           settled_games=settled_games)
+    open_games    = db_all("SELECT * FROM games WHERE status='open'    ORDER BY game_time ASC")
+    closed_games  = db_all("SELECT * FROM games WHERE status='closed'  ORDER BY game_time DESC")
+    settled_games = db_all("SELECT * FROM games WHERE status='settled' ORDER BY game_time DESC LIMIT 20")
+    return render_template("games.html", open_games=open_games,
+                           closed_games=closed_games, settled_games=settled_games)
 
 
 @app.route("/bet/<int:game_id>", methods=["GET", "POST"])
 @login_required
 def place_bet(game_id):
-    db   = get_db()
-    game = db.execute("SELECT * FROM games WHERE id=?", (game_id,)).fetchone()
-
+    game = db_one("SELECT * FROM games WHERE id=?", (game_id,))
     if not game:
         flash("Game not found.", "danger")
         return redirect(url_for("games"))
@@ -301,7 +413,6 @@ def place_bet(game_id):
         bet_type = request.form.get("bet_type", "moneyline")
         amount_s = request.form.get("amount", "").strip()
 
-        # Validate pick
         valid_ml = {game["team1"], game["team2"]}
         if game["odds_draw"]:
             valid_ml.add("Draw")
@@ -314,14 +425,12 @@ def place_bet(game_id):
             flash("Invalid pick.", "danger")
             return render_template("bet.html", game=game, user=user)
 
-        # Parse amount
         try:
             amount = float(amount_s)
         except ValueError:
             flash("Enter a valid amount.", "danger")
             return render_template("bet.html", game=game, user=user)
 
-        # Per-game min/max limits
         min_bet = game["min_bet"] or 1.0
         max_bet = game["max_bet"]
         if amount < min_bet:
@@ -330,12 +439,10 @@ def place_bet(game_id):
         if max_bet and amount > max_bet:
             flash(f"Maximum bet for this game is ${max_bet:,.2f}.", "danger")
             return render_template("bet.html", game=game, user=user)
-
         if amount > user["balance"]:
             flash("Insufficient balance.", "danger")
             return render_template("bet.html", game=game, user=user)
 
-        # Determine odds
         if bet_type == "spread":
             odds = game["spread_odds1"] if pick == game["team1"] else game["spread_odds2"]
         elif pick == game["team1"]:
@@ -345,29 +452,23 @@ def place_bet(game_id):
         else:
             odds = game["odds_draw"]
 
-        # Site-wide exposure limit check
         max_exp_s = get_setting("max_exposure")
         if max_exp_s:
-            max_exp        = float(max_exp_s)
-            current_exp    = get_current_exposure()
-            new_bet_profit = amount * (odds - 1)
-            if current_exp + new_bet_profit > max_exp:
-                remaining = max(0, max_exp - current_exp)
-                # Calculate max allowed bet given remaining exposure room
+            max_exp     = float(max_exp_s)
+            current_exp = get_current_exposure()
+            new_profit  = amount * (odds - 1)
+            if current_exp + new_profit > max_exp:
+                remaining   = max(0, max_exp - current_exp)
                 max_allowed = remaining / (odds - 1) if odds > 1 else 0
-                flash(
-                    f"Site exposure limit reached. Max allowed bet on this pick: ${max_allowed:,.2f}.",
-                    "danger",
-                )
+                flash(f"Site exposure limit reached. Max allowed bet: ${max_allowed:,.2f}.", "danger")
                 return render_template("bet.html", game=game, user=user)
 
-        # Record bet
-        db.execute("UPDATE users SET balance = balance - ? WHERE id=?", (amount, user["id"]))
-        db.execute(
+        db_exec("UPDATE users SET balance = balance - ? WHERE id=?", (amount, user["id"]))
+        db_exec(
             "INSERT INTO bets (user_id, game_id, pick, bet_type, amount, odds) VALUES (?,?,?,?,?,?)",
             (user["id"], game_id, pick, bet_type, amount, odds),
         )
-        db.commit()
+        db_commit()
 
         potential = round(amount * odds, 2)
         label = f"{pick} {'(spread)' if bet_type == 'spread' else ''}"
@@ -380,15 +481,14 @@ def place_bet(game_id):
 @app.route("/my-bets")
 @login_required
 def my_bets():
-    db   = get_db()
     user = current_user()
-    bets = db.execute("""
+    bets = db_all("""
         SELECT b.*, g.title, g.team1, g.team2, g.status AS game_status, g.winner, g.spread_result
         FROM bets b
         JOIN games g ON g.id = b.game_id
         WHERE b.user_id = ?
         ORDER BY b.created_at DESC
-    """, (user["id"],)).fetchall()
+    """, (user["id"],))
     return render_template("my_bets.html", bets=bets, user=user)
 
 
@@ -399,9 +499,8 @@ def my_bets():
 @app.route("/admin")
 @admin_required
 def admin():
-    db    = get_db()
-    games = db.execute("SELECT * FROM games ORDER BY created_at DESC").fetchall()
-    users = db.execute("SELECT id, username, balance, is_admin, created_at FROM users ORDER BY created_at DESC").fetchall()
+    games        = db_all("SELECT * FROM games ORDER BY created_at DESC")
+    users        = db_all("SELECT id, username, balance, is_admin, created_at FROM users ORDER BY created_at DESC")
     exposure     = get_current_exposure()
     max_exposure = get_setting("max_exposure")
     return render_template("admin.html", games=games, users=users,
@@ -412,40 +511,36 @@ def admin():
 @admin_required
 def admin_settings():
     max_exp = request.form.get("max_exposure", "").strip()
-    db = get_db()
     if max_exp == "" or max_exp.lower() == "none":
-        db.execute("UPDATE site_settings SET value=NULL WHERE key='max_exposure'")
+        db_exec("UPDATE site_settings SET value=NULL WHERE key='max_exposure'")
         flash("Exposure limit removed.", "info")
     else:
         try:
             val = float(max_exp)
             if val < 0:
                 raise ValueError
-            db.execute("UPDATE site_settings SET value=? WHERE key='max_exposure'", (str(val),))
+            db_exec("UPDATE site_settings SET value=? WHERE key='max_exposure'", (str(val),))
             flash(f"Exposure limit set to ${val:,.2f}.", "success")
         except ValueError:
             flash("Invalid exposure limit.", "danger")
-    db.commit()
+    db_commit()
     return redirect(url_for("admin"))
 
 
 @app.route("/admin/game/<int:game_id>/bets")
 @admin_required
 def admin_game_bets(game_id):
-    db   = get_db()
-    game = db.execute("SELECT * FROM games WHERE id=?", (game_id,)).fetchone()
+    game = db_one("SELECT * FROM games WHERE id=?", (game_id,))
     if not game:
         flash("Game not found.", "danger")
         return redirect(url_for("admin"))
-    bets = db.execute("""
+    bets = db_all("""
         SELECT b.*, u.username
         FROM bets b
         JOIN users u ON u.id = b.user_id
         WHERE b.game_id = ?
         ORDER BY b.created_at DESC
-    """, (game_id,)).fetchall()
-
-    # Summary stats
+    """, (game_id,))
     total_wagered  = sum(b["amount"] for b in bets)
     total_exposure = sum(b["amount"] * (b["odds"] - 1) for b in bets if b["status"] == "pending")
     return render_template("admin_game_bets.html", game=game, bets=bets,
@@ -460,15 +555,14 @@ def admin_new_game():
         if error:
             flash(error, "danger")
             return render_template("admin_game_form.html", game=None)
-        db = get_db()
-        db.execute("""
+        db_exec("""
             INSERT INTO games
               (title, team1, team2, odds1, odds2, odds_draw,
                spread1, spread2, spread_odds1, spread_odds2,
                min_bet, max_bet, game_time)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, data)
-        db.commit()
+        db_commit()
         flash(f"Game '{data[0]}' created!", "success")
         return redirect(url_for("admin"))
     return render_template("admin_game_form.html", game=None)
@@ -477,8 +571,7 @@ def admin_new_game():
 @app.route("/admin/game/<int:game_id>/edit", methods=["GET", "POST"])
 @admin_required
 def admin_edit_game(game_id):
-    db   = get_db()
-    game = db.execute("SELECT * FROM games WHERE id=?", (game_id,)).fetchone()
+    game = db_one("SELECT * FROM games WHERE id=?", (game_id,))
     if not game:
         flash("Game not found.", "danger")
         return redirect(url_for("admin"))
@@ -489,14 +582,14 @@ def admin_edit_game(game_id):
             flash(error, "danger")
             return render_template("admin_game_form.html", game=game)
         status = request.form.get("status", game["status"])
-        db.execute("""
+        db_exec("""
             UPDATE games SET
               title=?, team1=?, team2=?, odds1=?, odds2=?, odds_draw=?,
               spread1=?, spread2=?, spread_odds1=?, spread_odds2=?,
               min_bet=?, max_bet=?, game_time=?, status=?
             WHERE id=?
         """, (*data, status, game_id))
-        db.commit()
+        db_commit()
         flash("Game updated.", "success")
         return redirect(url_for("admin"))
 
@@ -504,7 +597,6 @@ def admin_edit_game(game_id):
 
 
 def _parse_game_form(form):
-    """Parse and validate game create/edit form. Returns (data_tuple, error_str)."""
     title     = form.get("title", "").strip()
     team1     = form.get("team1", "").strip()
     team2     = form.get("team2", "").strip()
@@ -564,15 +656,13 @@ def _parse_game_form(form):
 @app.route("/admin/game/<int:game_id>/settle", methods=["POST"])
 @admin_required
 def admin_settle_game(game_id):
-    db   = get_db()
-    game = db.execute("SELECT * FROM games WHERE id=?", (game_id,)).fetchone()
-
+    game = db_one("SELECT * FROM games WHERE id=?", (game_id,))
     if not game or game["status"] == "settled":
         flash("Game not found or already settled.", "warning")
         return redirect(url_for("admin"))
 
-    winner       = request.form.get("winner")
-    spread_result = request.form.get("spread_result")  # team1 | team2 | push | None
+    winner        = request.form.get("winner")
+    spread_result = request.form.get("spread_result")
 
     valid_ml = {game["team1"], game["team2"]}
     if game["odds_draw"]:
@@ -581,45 +671,36 @@ def admin_settle_game(game_id):
         flash("Invalid winner selection.", "danger")
         return redirect(url_for("admin"))
 
-    bets = db.execute(
-        "SELECT * FROM bets WHERE game_id=? AND status='pending'", (game_id,)
-    ).fetchall()
-
+    bets    = db_all("SELECT * FROM bets WHERE game_id=? AND status='pending'", (game_id,))
     settled = 0
+
     for bet in bets:
         if bet["bet_type"] == "spread":
             if not spread_result:
-                continue  # skip spread bets if no spread result given
+                continue
             if spread_result == "push":
-                # Refund the wager
-                db.execute("UPDATE bets SET status='push', payout=? WHERE id=?",
-                           (bet["amount"], bet["id"]))
-                db.execute("UPDATE users SET balance = balance + ? WHERE id=?",
-                           (bet["amount"], bet["user_id"]))
+                db_exec("UPDATE bets SET status='push', payout=? WHERE id=?",
+                        (bet["amount"], bet["id"]))
+                db_exec("UPDATE users SET balance = balance + ? WHERE id=?",
+                        (bet["amount"], bet["user_id"]))
             elif bet["pick"] == spread_result:
                 payout = round(bet["amount"] * bet["odds"], 2)
-                db.execute("UPDATE bets SET status='won', payout=? WHERE id=?",
-                           (payout, bet["id"]))
-                db.execute("UPDATE users SET balance = balance + ? WHERE id=?",
-                           (payout, bet["user_id"]))
+                db_exec("UPDATE bets SET status='won', payout=? WHERE id=?", (payout, bet["id"]))
+                db_exec("UPDATE users SET balance = balance + ? WHERE id=?", (payout, bet["user_id"]))
             else:
-                db.execute("UPDATE bets SET status='lost', payout=0 WHERE id=?", (bet["id"],))
-        else:  # moneyline
+                db_exec("UPDATE bets SET status='lost', payout=0 WHERE id=?", (bet["id"],))
+        else:
             if bet["pick"] == winner:
                 payout = round(bet["amount"] * bet["odds"], 2)
-                db.execute("UPDATE bets SET status='won', payout=? WHERE id=?",
-                           (payout, bet["id"]))
-                db.execute("UPDATE users SET balance = balance + ? WHERE id=?",
-                           (payout, bet["user_id"]))
+                db_exec("UPDATE bets SET status='won', payout=? WHERE id=?", (payout, bet["id"]))
+                db_exec("UPDATE users SET balance = balance + ? WHERE id=?", (payout, bet["user_id"]))
             else:
-                db.execute("UPDATE bets SET status='lost', payout=0 WHERE id=?", (bet["id"],))
+                db_exec("UPDATE bets SET status='lost', payout=0 WHERE id=?", (bet["id"],))
         settled += 1
 
-    db.execute(
-        "UPDATE games SET status='settled', winner=?, spread_result=? WHERE id=?",
-        (winner, spread_result, game_id),
-    )
-    db.commit()
+    db_exec("UPDATE games SET status='settled', winner=?, spread_result=? WHERE id=?",
+            (winner, spread_result, game_id))
+    db_commit()
     flash(f"Game settled! Winner: {winner}. {settled} bet(s) processed.", "success")
     return redirect(url_for("admin"))
 
@@ -627,9 +708,8 @@ def admin_settle_game(game_id):
 @app.route("/admin/game/<int:game_id>/close", methods=["POST"])
 @admin_required
 def admin_close_game(game_id):
-    db = get_db()
-    db.execute("UPDATE games SET status='closed' WHERE id=?", (game_id,))
-    db.commit()
+    db_exec("UPDATE games SET status='closed' WHERE id=?", (game_id,))
+    db_commit()
     flash("Betting closed for this game.", "info")
     return redirect(url_for("admin"))
 
@@ -637,17 +717,15 @@ def admin_close_game(game_id):
 @app.route("/admin/user/<int:user_id>/adjust-balance", methods=["POST"])
 @admin_required
 def admin_adjust_balance(user_id):
-    amount = request.form.get("amount", "").strip()
     try:
-        amount = float(amount)
+        amount = float(request.form.get("amount", ""))
     except ValueError:
         flash("Invalid amount.", "danger")
         return redirect(url_for("admin"))
-    db   = get_db()
-    user = db.execute("SELECT username, balance FROM users WHERE id=?", (user_id,)).fetchone()
+    user        = db_one("SELECT username, balance FROM users WHERE id=?", (user_id,))
     new_balance = max(0, user["balance"] + amount)
-    db.execute("UPDATE users SET balance = ? WHERE id=?", (new_balance, user_id))
-    db.commit()
+    db_exec("UPDATE users SET balance = ? WHERE id=?", (new_balance, user_id))
+    db_commit()
     word = "Added" if amount >= 0 else "Removed"
     flash(f"{word} ${abs(amount):,.2f} {'to' if amount >= 0 else 'from'} {user['username']}. Balance: ${new_balance:,.2f}", "success")
     return redirect(url_for("admin"))
@@ -656,18 +734,16 @@ def admin_adjust_balance(user_id):
 @app.route("/admin/user/<int:user_id>/set-balance", methods=["POST"])
 @admin_required
 def admin_set_balance(user_id):
-    amount = request.form.get("amount", "").strip()
     try:
-        amount = float(amount)
+        amount = float(request.form.get("amount", ""))
         if amount < 0:
             raise ValueError
     except ValueError:
         flash("Invalid amount.", "danger")
         return redirect(url_for("admin"))
-    db   = get_db()
-    user = db.execute("SELECT username FROM users WHERE id=?", (user_id,)).fetchone()
-    db.execute("UPDATE users SET balance = ? WHERE id=?", (amount, user_id))
-    db.commit()
+    user = db_one("SELECT username FROM users WHERE id=?", (user_id,))
+    db_exec("UPDATE users SET balance = ? WHERE id=?", (amount, user_id))
+    db_commit()
     flash(f"Set {user['username']}'s balance to ${amount:,.2f}.", "success")
     return redirect(url_for("admin"))
 
