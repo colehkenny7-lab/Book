@@ -296,6 +296,21 @@ def inject_user():
     return dict(current_user=current_user(), now=datetime.utcnow())
 
 
+@app.template_filter("datefmt")
+def datefmt(val, fmt="%Y-%m-%d"):
+    """Format a date that may be a datetime object (Postgres) or string (SQLite)."""
+    if val is None:
+        return ""
+    if isinstance(val, str):
+        # SQLite returns strings like "2024-01-15 12:30:00"
+        val = val.replace("T", " ")[:19]
+        try:
+            val = datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return val[:10]
+    return val.strftime(fmt)
+
+
 # ---------------------------------------------------------------------------
 # Routes – Auth
 # ---------------------------------------------------------------------------

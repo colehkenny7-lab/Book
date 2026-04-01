@@ -131,7 +131,7 @@
             <td><strong>{{ u.username }}</strong></td>
             <td>${{ "%.2f"|format(u.balance) }}</td>
             <td>{{ 'Admin' if u.is_admin else 'Player' }}</td>
-            <td class="small">{{ u.created_at[:10] }}</td>
+            <td class="small">{{ u.created_at | datefmt }}</td>
             <td>
               {% if not u.is_admin %}
                 <form method="POST" action="{{ url_for('admin_set_balance', user_id=u.id) }}" style="display:flex;gap:.3rem">

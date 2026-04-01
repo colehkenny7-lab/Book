@@ -82,7 +82,7 @@
             bet <strong>${{ "%.0f"|format(a.amount) }}</strong> on
             <span class="activity-pick">{{ a.pick }}{% if a.bet_type == 'spread' %} (spread){% endif %}</span>
             <span class="activity-game">{{ a.title }}</span>
-            <span class="activity-time">{{ a.created_at | string | truncate(16, True, '') }}</span>
+            <span class="activity-time">{{ a.created_at | datefmt('%m-%d %H:%M') }}</span>
           </li>
         {% endfor %}
       </ul>

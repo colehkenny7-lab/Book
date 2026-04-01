@@ -79,7 +79,7 @@
               {% elif b.status == 'push' %}<span class="badge badge-closed">Push</span>
               {% endif %}
             </td>
-            <td class="text-muted small">{{ b.created_at[5:16] }}</td>
+            <td class="text-muted small">{{ b.created_at | datefmt('%m-%d %H:%M') }}</td>
           </tr>
         {% endfor %}
       </tbody>
