@@ -395,15 +395,11 @@ def change_password():
 @app.route("/")
 def index():
     games = db_all("""
-        SELECT g.*,
-               COUNT(b.id) AS bet_count
+        SELECT g.*, COUNT(b.id) AS bet_count
         FROM games g
         LEFT JOIN bets b ON b.game_id = g.id
         WHERE g.status = 'open'
-        GROUP BY g.id, g.title, g.team1, g.team2, g.odds1, g.odds2, g.odds_draw,
-                 g.spread1, g.spread2, g.spread_odds1, g.spread_odds2,
-                 g.min_bet, g.max_bet, g.game_time, g.status, g.winner,
-                 g.spread_result, g.created_at
+        GROUP BY g.id
         ORDER BY g.game_time ASC
     """)
     activity = db_all("""
@@ -428,7 +424,7 @@ def leaderboard():
                COALESCE(SUM(CASE WHEN b.status='won' THEN b.payout ELSE 0 END), 0) AS total_won
         FROM users u
         LEFT JOIN bets b ON b.user_id = u.id
-        WHERE u.is_admin = FALSE OR u.is_admin = 0
+        WHERE NOT u.is_admin
         GROUP BY u.id, u.username, u.balance
         ORDER BY u.balance DESC
     """)
@@ -442,22 +438,20 @@ def leaderboard():
 @app.route("/games")
 @login_required
 def games():
-    def with_counts(status_clause):
+    def with_counts(status_clause, order="ASC", limit=None):
+        lim = f"LIMIT {limit}" if limit else ""
         return db_all(f"""
             SELECT g.*, COUNT(b.id) AS bet_count
             FROM games g
             LEFT JOIN bets b ON b.game_id = g.id
             WHERE {status_clause}
-            GROUP BY g.id, g.title, g.team1, g.team2, g.odds1, g.odds2, g.odds_draw,
-                     g.spread1, g.spread2, g.spread_odds1, g.spread_odds2,
-                     g.min_bet, g.max_bet, g.game_time, g.status, g.winner,
-                     g.spread_result, g.created_at
-            ORDER BY g.game_time {'ASC' if 'open' in status_clause else 'DESC'}
-            {'LIMIT 20' if 'settled' in status_clause else ''}
+            GROUP BY g.id
+            ORDER BY g.game_time {order}
+            {lim}
         """)
-    open_games    = with_counts("g.status='open'")
-    closed_games  = with_counts("g.status='closed'")
-    settled_games = with_counts("g.status='settled'")
+    open_games    = with_counts("g.status='open'",    order="ASC")
+    closed_games  = with_counts("g.status='closed'",  order="DESC")
+    settled_games = with_counts("g.status='settled'", order="DESC", limit=20)
     return render_template("games.html", open_games=open_games,
                            closed_games=closed_games, settled_games=settled_games)
 
@@ -613,8 +607,7 @@ def admin_reset():
         flash("All finished games and their bets have been removed.", "success")
 
     elif action == "reset_balances":
-        db_exec("UPDATE users SET balance = 0 WHERE is_admin = ? OR is_admin = FALSE",
-                (0,))
+        db_exec("UPDATE users SET balance = 0 WHERE NOT is_admin")
         db_commit()
         flash("All player balances reset to $0.", "success")
 
@@ -626,7 +619,7 @@ def admin_reset():
         """)
         db_exec("DELETE FROM games WHERE status IN ('settled', 'closed')")
         db_exec("DELETE FROM bets")
-        db_exec("UPDATE users SET balance = 0 WHERE is_admin = 0 OR is_admin = FALSE")
+        db_exec("UPDATE users SET balance = 0 WHERE NOT is_admin")
         db_commit()
         flash("All finished games cleared and all balances reset to $0.", "success")
 
