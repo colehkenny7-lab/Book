@@ -4,7 +4,10 @@
 {% block content %}
 <div class="page-header">
   <h1>Admin Panel</h1>
-  <a href="{{ url_for('admin_new_game') }}" class="btn btn-primary">+ New Game</a>
+  <div style="display:flex;gap:.5rem">
+    <a href="{{ url_for('admin_parlays') }}" class="btn btn-ghost">View All Parlays</a>
+    <a href="{{ url_for('admin_new_game') }}" class="btn btn-primary">+ New Game</a>
+  </div>
 </div>
 
 <!-- REGISTRATION LOCK -->

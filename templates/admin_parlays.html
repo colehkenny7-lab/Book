@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}All Parlays – Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>All Parlay Bets</h1>
+  <a href="{{ url_for('admin') }}" class="btn btn-ghost">← Back to Admin</a>
+</div>
+
+<!-- Summary Stats -->
+<div class="stats-row" style="margin-bottom:2rem">
+  <div class="stat-card">
+    <div class="stat-num">{{ parlays|length }}</div>
+    <div class="stat-label">Total Parlays</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num">{{ parlays|selectattr('status','eq','pending')|list|length }}</div>
+    <div class="stat-label">Pending</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num">${{ "%.2f"|format(total_wagered) }}</div>
+    <div class="stat-label">Total Wagered</div>
+  </div>
+  <div class="stat-card stat-lost">
+    <div class="stat-num">${{ "%.2f"|format(total_exposure) }}</div>
+    <div class="stat-label">Pending Exposure</div>
+  </div>
+  <div class="stat-card stat-won">
+    <div class="stat-num">{{ parlays|selectattr('status','eq','won')|list|length }}</div>
+    <div class="stat-label">Won</div>
+  </div>
+  <div class="stat-card stat-lost">
+    <div class="stat-num">{{ parlays|selectattr('status','eq','lost')|list|length }}</div>
+    <div class="stat-label">Lost</div>
+  </div>
+</div>
+
+{% if parlays %}
+  {% for p in parlays %}
+    <div class="parlay-history-card">
+      <div class="parlay-history-header">
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+          <a href="{{ url_for('admin_user_profile', user_id=p.user_id) }}" style="color:inherit;text-decoration:none">
+            <strong>{{ p.username }}</strong>
+          </a>
+          <span class="parlay-odds-badge">{{ "%.2f"|format(p.combined_odds) }}x</span>
+          <span class="text-muted small">{{ parlay_legs_map[p.id]|length }}-leg parlay</span>
+          <span>Wager: <strong>${{ "%.2f"|format(p.amount) }}</strong></span>
+          <span class="text-muted small">→ Potential: <strong>${{ "%.2f"|format(p.amount * p.combined_odds) }}</strong></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+          {% if p.payout %}
+            <span class="text-muted small">Paid: ${{ "%.2f"|format(p.payout) }}</span>
+          {% endif %}
+          {% if p.status == 'pending' %}<span class="badge badge-pending">Pending</span>
+          {% elif p.status == 'won' %}<span class="badge badge-won">Won</span>
+          {% elif p.status == 'lost' %}<span class="badge badge-lost">Lost</span>
+          {% elif p.status == 'void' %}<span class="badge badge-closed">Void</span>
+          {% endif %}
+          <span class="text-muted small">{{ p.created_at | datefmt('%m-%d %H:%M') }}</span>
+        </div>
+      </div>
+      <div class="parlay-legs-list">
+        {% for leg in parlay_legs_map[p.id] %}
+          <div class="parlay-leg-row">
+            <span class="parlay-leg-game">{{ leg.title }}</span>
+            <span class="parlay-leg-pick">
+              {{ leg.pick }}{% if leg.bet_type == 'spread' %} <span class="text-muted small">(spread)</span>{% endif %}
+            </span>
+            <span class="parlay-leg-odds">{{ leg.odds }}x</span>
+            <span>
+              {% if leg.status == 'pending' %}<span class="badge badge-pending">Pending</span>
+              {% elif leg.status == 'won' %}<span class="badge badge-won">Won</span>
+              {% elif leg.status == 'lost' %}<span class="badge badge-lost">Lost</span>
+              {% elif leg.status == 'push' %}<span class="badge badge-closed">Push</span>
+              {% endif %}
+            </span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+{% else %}
+  <div class="empty-state"><p>No parlays placed yet.</p></div>
+{% endif %}
+{% endblock %}

@@ -296,10 +296,13 @@ def get_setting(key):
 
 
 def get_current_exposure():
-    row = db_one(
+    straight = db_one(
         "SELECT COALESCE(SUM(amount * (odds - 1)), 0) AS exp FROM bets WHERE status='pending'"
     )
-    return float(row["exp"])
+    parlay = db_one(
+        "SELECT COALESCE(SUM(amount * (combined_odds - 1)), 0) AS exp FROM parlays WHERE status='pending'"
+    )
+    return float(straight["exp"]) + float(parlay["exp"])
 
 
 # ---------------------------------------------------------------------------
@@ -756,6 +759,30 @@ def admin_game_bets(game_id):
     total_exposure = sum(b["amount"] * (b["odds"] - 1) for b in bets if b["status"] == "pending")
     return render_template("admin_game_bets.html", game=game, bets=bets,
                            parlay_legs=parlay_legs,
+                           total_wagered=total_wagered, total_exposure=total_exposure)
+
+
+@app.route("/admin/parlays")
+@admin_required
+def admin_parlays():
+    parlays = db_all("""
+        SELECT p.*, u.username
+        FROM parlays p
+        JOIN users u ON u.id = p.user_id
+        ORDER BY p.created_at DESC
+    """)
+    parlay_legs_map = {}
+    for p in parlays:
+        parlay_legs_map[p["id"]] = db_all("""
+            SELECT pl.*, g.title
+            FROM parlay_legs pl
+            JOIN games g ON g.id = pl.game_id
+            WHERE pl.parlay_id = ?
+        """, (p["id"],))
+    total_wagered  = sum(p["amount"] for p in parlays)
+    total_exposure = sum(p["amount"] * (p["combined_odds"] - 1) for p in parlays if p["status"] == "pending")
+    return render_template("admin_parlays.html", parlays=parlays,
+                           parlay_legs_map=parlay_legs_map,
                            total_wagered=total_wagered, total_exposure=total_exposure)
 
 
