@@ -114,8 +114,8 @@
             <td>{{ leg.pick }}{% if leg.bet_type == 'spread' %} <span class="text-muted small">(spread)</span>{% endif %}</td>
             <td>{{ leg.odds }}x</td>
             <td>${{ "%.2f"|format(leg.parlay_amount) }}</td>
-            <td>{{ "%.2f"|format(leg.total_odds) }}x</td>
-            <td>${{ "%.2f"|format(leg.parlay_amount * leg.total_odds) }}</td>
+            <td>{{ "%.2f"|format(leg.combined_odds) }}x</td>
+            <td>${{ "%.2f"|format(leg.parlay_amount * leg.combined_odds) }}</td>
             <td>
               {% if leg.status == 'pending' %}<span class="badge badge-pending">Pending</span>
               {% elif leg.status == 'won' %}<span class="badge badge-won">Won</span>

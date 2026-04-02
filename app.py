@@ -745,7 +745,7 @@ def admin_game_bets(game_id):
     parlay_legs = db_all("""
         SELECT pl.*, u.username, u.id AS player_id,
                p.amount AS parlay_amount, p.status AS parlay_status,
-               p.total_odds, p.payout, p.id AS parlay_id
+               p.combined_odds, p.payout, p.id AS parlay_id
         FROM parlay_legs pl
         JOIN parlays p ON p.id = pl.parlay_id
         JOIN users u ON u.id = p.user_id

@@ -76,9 +76,9 @@
       <div class="parlay-history-card">
         <div class="parlay-history-header">
           <div>
-            <span class="parlay-odds-badge">{{ "%.2f"|format(p.total_odds) }}x</span>
+            <span class="parlay-odds-badge">{{ "%.2f"|format(p.combined_odds) }}x</span>
             <span style="margin-left:.5rem">Wager: <strong>${{ "%.2f"|format(p.amount) }}</strong></span>
-            <span style="margin-left:.5rem">Potential: <strong>${{ "%.2f"|format(p.amount * p.total_odds) }}</strong></span>
+            <span style="margin-left:.5rem">Potential: <strong>${{ "%.2f"|format(p.amount * p.combined_odds) }}</strong></span>
           </div>
           <div style="display:flex;align-items:center;gap:.75rem">
             {% if p.payout and p.payout != p.amount %}

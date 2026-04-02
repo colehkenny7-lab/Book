@@ -8,9 +8,14 @@
 </head>
 <body>
 
+  <!-- EASTER TOP BAR -->
+  <div class="easter-topbar">
+    🥚🐣🌸 Happy Easter! 🐰🌷🥚
+  </div>
+
   <!-- NAV -->
   <nav class="navbar">
-    <a href="{{ url_for('index') }}" class="brand">BetBook</a>
+    <a href="{{ url_for('index') }}" class="brand">BetBook <span class="easter-brand-egg">🐣</span></a>
 
     <div class="nav-links">
       {% if current_user %}
@@ -52,7 +57,7 @@
 
   <!-- FOOTER -->
   <footer class="footer">
-    <p>BetBook &copy; {{ now.year if now else 2026 }} &nbsp;|&nbsp; For entertainment purposes only.</p>
+    <p>🌷 BetBook &copy; {{ now.year if now else 2026 }} &nbsp;|&nbsp; For entertainment purposes only. 🌷</p>
   </footer>
 
   <script src="{{ url_for('static', filename='script.js') }}"></script>
