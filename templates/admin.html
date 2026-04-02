@@ -97,6 +97,10 @@
                     <button class="btn btn-warning btn-xs" onclick="return confirm('Close betting?')">Close</button>
                   </form>
                 {% endif %}
+                <form method="POST" action="{{ url_for('admin_delete_game', game_id=g.id) }}" style="display:inline"
+                      onsubmit="return confirm('Delete {{ g.title }}? Pending bets will be refunded.')">
+                  <button class="btn btn-danger btn-xs">Delete</button>
+                </form>
                 {% if g.status != 'settled' %}
                   <button class="btn btn-primary btn-xs"
                     onclick="openSettleModal(

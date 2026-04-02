@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}Parlay Builder{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Parlay Builder</h1>
+  <span class="balance-badge-lg">Balance: ${{ "%.2f"|format(user.balance) }}</span>
+</div>
+
+{% if not games %}
+  <div class="empty-state"><p>No open games available for parlays right now.</p></div>
+{% else %}
+
+<div class="parlay-layout">
+  <!-- LEFT: game picker -->
+  <div class="parlay-games">
+    <p class="form-hint" style="margin-bottom:1rem">Select one pick per game. Min 2 legs, max 5 legs, max 100x combined odds.</p>
+
+    {% for g in games %}
+    <div class="parlay-game-card" id="pg-{{ g.id }}">
+      <div class="parlay-game-header">
+        <span class="game-title">{{ g.title }}</span>
+        <span class="game-time small text-muted">{{ g.game_time }}</span>
+      </div>
+
+      <div class="parlay-picks">
+        <!-- Moneyline -->
+        <button type="button" class="parlay-pick-btn"
+                data-game="{{ g.id }}" data-pick="{{ g.team1 }}"
+                data-type="moneyline" data-odds="{{ g.odds1 }}"
+                onclick="toggleLeg(this)">
+          {{ g.team1 }} <em>ML {{ g.odds1 }}x</em>
+        </button>
+        <button type="button" class="parlay-pick-btn"
+                data-game="{{ g.id }}" data-pick="{{ g.team2 }}"
+                data-type="moneyline" data-odds="{{ g.odds2 }}"
+                onclick="toggleLeg(this)">
+          {{ g.team2 }} <em>ML {{ g.odds2 }}x</em>
+        </button>
+        {% if g.odds_draw %}
+        <button type="button" class="parlay-pick-btn"
+                data-game="{{ g.id }}" data-pick="Draw"
+                data-type="moneyline" data-odds="{{ g.odds_draw }}"
+                onclick="toggleLeg(this)">
+          Draw <em>{{ g.odds_draw }}x</em>
+        </button>
+        {% endif %}
+        {% if g.spread1 is not none %}
+        <button type="button" class="parlay-pick-btn parlay-spread-btn"
+                data-game="{{ g.id }}" data-pick="{{ g.team1 }}"
+                data-type="spread" data-odds="{{ g.spread_odds1 }}"
+                onclick="toggleLeg(this)">
+          {{ g.team1 }} {{ "%+.1f"|format(g.spread1) }} <em>{{ g.spread_odds1 }}x</em>
+        </button>
+        <button type="button" class="parlay-pick-btn parlay-spread-btn"
+                data-game="{{ g.id }}" data-pick="{{ g.team2 }}"
+                data-type="spread" data-odds="{{ g.spread_odds2 }}"
+                onclick="toggleLeg(this)">
+          {{ g.team2 }} {{ "%+.1f"|format(g.spread2) }} <em>{{ g.spread_odds2 }}x</em>
+        </button>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- RIGHT: slip -->
+  <aside class="parlay-slip">
+    <h3>Bet Slip</h3>
+    <ul id="slip-legs" class="slip-list">
+      <li class="slip-empty" id="slip-empty">No picks yet.</li>
+    </ul>
+
+    <div class="slip-stats">
+      <div class="slip-stat">
+        <span>Legs</span>
+        <strong id="slip-count">0</strong>
+      </div>
+      <div class="slip-stat">
+        <span>Combined Odds</span>
+        <strong id="slip-odds">–</strong>
+      </div>
+      <div class="slip-stat">
+        <span>Potential Payout</span>
+        <strong id="slip-payout" class="text-won">–</strong>
+      </div>
+    </div>
+
+    <div id="slip-warnings" class="slip-warning" style="display:none"></div>
+
+    <form method="POST" action="{{ url_for('parlay') }}" id="parlay-form">
+      <input type="hidden" name="legs_json" id="legs-json" value="[]" />
+      <div class="form-group" style="margin-top:1rem">
+        <label for="amount">Wager ($)</label>
+        <input type="number" id="amount" name="amount" class="form-input"
+               min="1" step="1" placeholder="e.g. 50"
+               oninput="updatePayout()" />
+        <small class="form-hint">Balance: ${{ "%.2f"|format(user.balance) }}</small>
+      </div>
+      <button type="submit" id="slip-submit" class="btn btn-primary btn-block" disabled>
+        Place Parlay
+      </button>
+      <a href="{{ url_for('games') }}" class="btn btn-ghost btn-block" style="margin-top:.5rem">
+        Back to Games
+      </a>
+    </form>
+  </aside>
+</div>
+
+<script>
+const MAX_LEGS = 5;
+const MAX_ODDS = 100;
+let legs = {}; // keyed by game_id
+
+function toggleLeg(btn) {
+  const gid   = btn.dataset.game;
+  const pick  = btn.dataset.pick;
+  const type  = btn.dataset.type;
+  const odds  = parseFloat(btn.dataset.odds);
+
+  // Deselect all buttons for this game first
+  document.querySelectorAll(`.parlay-pick-btn[data-game="${gid}"]`)
+    .forEach(b => b.classList.remove('selected'));
+
+  if (legs[gid] && legs[gid].pick === pick && legs[gid].bet_type === type) {
+    // Clicking same pick again → deselect
+    delete legs[gid];
+  } else {
+    legs[gid] = { game_id: parseInt(gid), pick, bet_type: type, odds };
+    btn.classList.add('selected');
+  }
+  render();
+}
+
+function render() {
+  const values  = Object.values(legs);
+  const count   = values.length;
+  const combined = values.reduce((acc, l) => acc * l.odds, 1.0);
+
+  // Slip list
+  const list   = document.getElementById('slip-legs');
+  const empty  = document.getElementById('slip-empty');
+  list.querySelectorAll('.slip-leg').forEach(el => el.remove());
+
+  if (count === 0) {
+    empty.style.display = '';
+  } else {
+    empty.style.display = 'none';
+    values.forEach(l => {
+      const li = document.createElement('li');
+      li.className = 'slip-leg';
+      li.innerHTML = `<strong>${l.pick}</strong> <span class="text-muted">${l.bet_type === 'spread' ? 'Spread' : 'ML'} ${l.odds}x</span>
+        <button type="button" onclick="removeLeg(${l.game_id})" class="slip-remove">✕</button>`;
+      list.appendChild(li);
+    });
+  }
+
+  // Stats
+  document.getElementById('slip-count').textContent = count;
+  document.getElementById('slip-odds').textContent  = count ? combined.toFixed(2) + 'x' : '–';
+  document.getElementById('legs-json').value = JSON.stringify(values);
+
+  // Warnings
+  const warn = document.getElementById('slip-warnings');
+  let msg = '';
+  if (count > MAX_LEGS) msg = `Max ${MAX_LEGS} legs.`;
+  else if (combined > MAX_ODDS) msg = `Combined odds ${combined.toFixed(2)}x exceed 100x limit.`;
+  warn.style.display = msg ? 'block' : 'none';
+  warn.textContent   = msg;
+
+  const ok = count >= 2 && count <= MAX_LEGS && combined <= MAX_ODDS;
+  document.getElementById('slip-submit').disabled = !ok;
+
+  updatePayout();
+}
+
+function removeLeg(gid) {
+  delete legs[String(gid)];
+  document.querySelectorAll(`.parlay-pick-btn[data-game="${gid}"]`)
+    .forEach(b => b.classList.remove('selected'));
+  render();
+}
+
+function updatePayout() {
+  const amount   = parseFloat(document.getElementById('amount').value) || 0;
+  const values   = Object.values(legs);
+  const combined = values.reduce((acc, l) => acc * l.odds, 1.0);
+  const payout   = amount > 0 && values.length >= 2 ? (amount * combined).toFixed(2) : '–';
+  document.getElementById('slip-payout').textContent = payout !== '–' ? '$' + payout : '–';
+}
+</script>
+{% endif %}
+{% endblock %}

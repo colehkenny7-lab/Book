@@ -15,8 +15,10 @@
     <div class="nav-links">
       {% if current_user %}
         <a href="{{ url_for('games') }}">Games</a>
+        <a href="{{ url_for('parlay') }}">Parlay</a>
         <a href="{{ url_for('my_bets') }}">My Bets</a>
         <a href="{{ url_for('leaderboard') }}">Leaderboard</a>
+        <a href="{{ url_for('analytics') }}">Analytics</a>
         {% if session.get('is_admin') %}
           <a href="{{ url_for('admin') }}" class="admin-link">Admin</a>
         {% endif %}

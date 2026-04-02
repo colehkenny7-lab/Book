@@ -2,6 +2,7 @@ import os
 import sqlite3
 from datetime import datetime
 from functools import wraps
+from zoneinfo import ZoneInfo
 
 from flask import (Flask, flash, g, redirect, render_template, request,
                    session, url_for)
@@ -134,6 +135,24 @@ def _init_sqlite():
             key   TEXT PRIMARY KEY,
             value TEXT
         );
+        CREATE TABLE IF NOT EXISTS parlays (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id       INTEGER NOT NULL REFERENCES users(id),
+            amount        REAL    NOT NULL,
+            combined_odds REAL    NOT NULL,
+            status        TEXT    NOT NULL DEFAULT 'pending',
+            payout        REAL,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS parlay_legs (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            parlay_id  INTEGER NOT NULL REFERENCES parlays(id),
+            game_id    INTEGER NOT NULL REFERENCES games(id),
+            pick       TEXT    NOT NULL,
+            bet_type   TEXT    NOT NULL DEFAULT 'moneyline',
+            odds       REAL    NOT NULL,
+            status     TEXT    NOT NULL DEFAULT 'pending'
+        );
     """)
     db.commit()
     # Migrate older SQLite DBs
@@ -205,6 +224,28 @@ def _init_postgres():
         CREATE TABLE IF NOT EXISTS site_settings (
             key   TEXT PRIMARY KEY,
             value TEXT
+        )
+    """)
+    db_exec("""
+        CREATE TABLE IF NOT EXISTS parlays (
+            id            SERIAL PRIMARY KEY,
+            user_id       INTEGER NOT NULL REFERENCES users(id),
+            amount        FLOAT   NOT NULL,
+            combined_odds FLOAT   NOT NULL,
+            status        TEXT    NOT NULL DEFAULT 'pending',
+            payout        FLOAT,
+            created_at    TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    """)
+    db_exec("""
+        CREATE TABLE IF NOT EXISTS parlay_legs (
+            id        SERIAL PRIMARY KEY,
+            parlay_id INTEGER NOT NULL REFERENCES parlays(id),
+            game_id   INTEGER NOT NULL REFERENCES games(id),
+            pick      TEXT    NOT NULL,
+            bet_type  TEXT    NOT NULL DEFAULT 'moneyline',
+            odds      FLOAT   NOT NULL,
+            status    TEXT    NOT NULL DEFAULT 'pending'
         )
     """)
     # Safe column migrations for existing Postgres DBs
@@ -289,6 +330,21 @@ def current_user():
     if "user_id" not in session:
         return None
     return db_one("SELECT * FROM users WHERE id=?", (session["user_id"],))
+
+
+@app.before_request
+def auto_close_expired_games():
+    if request.endpoint in ("static", None):
+        return
+    try:
+        now_est = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%dT%H:%M")
+        db_exec(
+            "UPDATE games SET status='closed' WHERE status='open' AND game_time <= ?",
+            (now_est,),
+        )
+        db_commit()
+    except Exception:
+        pass  # never break a page load over this
 
 
 @app.context_processor
@@ -565,7 +621,19 @@ def my_bets():
         WHERE b.user_id = ?
         ORDER BY b.created_at DESC
     """, (user["id"],))
-    return render_template("my_bets.html", bets=bets, user=user)
+    parlays = db_all(
+        "SELECT * FROM parlays WHERE user_id=? ORDER BY created_at DESC", (user["id"],)
+    )
+    parlay_legs_map = {}
+    for p in parlays:
+        parlay_legs_map[p["id"]] = db_all("""
+            SELECT pl.*, g.title, g.team1, g.team2
+            FROM parlay_legs pl
+            JOIN games g ON g.id = pl.game_id
+            WHERE pl.parlay_id = ?
+        """, (p["id"],))
+    return render_template("my_bets.html", bets=bets, parlays=parlays,
+                           parlay_legs_map=parlay_legs_map, user=user)
 
 
 # ---------------------------------------------------------------------------
@@ -830,6 +898,10 @@ def admin_settle_game(game_id):
     db_exec("UPDATE games SET status='settled', winner=?, spread_result=? WHERE id=?",
             (winner, spread_result, game_id))
     db_commit()
+
+    # Settle any parlay legs tied to this game
+    _settle_parlay_legs(game_id, winner, spread_result)
+
     flash(f"Game settled! Winner: {winner}. {settled} bet(s) processed.", "success")
     return redirect(url_for("admin"))
 
@@ -874,6 +946,275 @@ def admin_set_balance(user_id):
     db_exec("UPDATE users SET balance = ? WHERE id=?", (amount, user_id))
     db_commit()
     flash(f"Set {user['username']}'s balance to ${amount:,.2f}.", "success")
+    return redirect(url_for("admin"))
+
+
+# ---------------------------------------------------------------------------
+# Parlay helpers
+# ---------------------------------------------------------------------------
+
+def _settle_parlay_legs(game_id, winner, spread_result):
+    """Called after a game is settled — resolves any parlay legs on this game."""
+    legs = db_all(
+        "SELECT * FROM parlay_legs WHERE game_id=? AND status='pending'", (game_id,)
+    )
+    if not legs:
+        return
+
+    for leg in legs:
+        if leg["bet_type"] == "spread":
+            if not spread_result:
+                continue
+            if spread_result == "push":
+                db_exec("UPDATE parlay_legs SET status='push' WHERE id=?", (leg["id"],))
+            elif leg["pick"] == spread_result:
+                db_exec("UPDATE parlay_legs SET status='won' WHERE id=?", (leg["id"],))
+            else:
+                db_exec("UPDATE parlay_legs SET status='lost' WHERE id=?", (leg["id"],))
+                db_exec("UPDATE parlays SET status='lost', payout=0 WHERE id=?", (leg["parlay_id"],))
+        else:
+            if leg["pick"] == winner:
+                db_exec("UPDATE parlay_legs SET status='won' WHERE id=?", (leg["id"],))
+            else:
+                db_exec("UPDATE parlay_legs SET status='lost' WHERE id=?", (leg["id"],))
+                db_exec("UPDATE parlays SET status='lost', payout=0 WHERE id=?", (leg["parlay_id"],))
+    db_commit()
+
+    # Check each affected parlay — pay out if all legs settled and none lost
+    parlay_ids = list({leg["parlay_id"] for leg in legs})
+    for pid in parlay_ids:
+        parlay = db_one("SELECT * FROM parlays WHERE id=? AND status='pending'", (pid,))
+        if not parlay:
+            continue
+        all_legs = db_all("SELECT * FROM parlay_legs WHERE parlay_id=?", (pid,))
+        statuses  = [l["status"] for l in all_legs]
+        if any(s == "pending" for s in statuses):
+            continue  # still waiting on other games
+        if any(s == "lost" for s in statuses):
+            continue  # already marked lost above
+        # All legs won or pushed — recalculate without pushed legs
+        active = [l for l in all_legs if l["status"] == "won"]
+        if not active:
+            payout = parlay["amount"]  # all pushed → full refund
+            db_exec("UPDATE parlays SET status='push', payout=? WHERE id=?", (payout, pid))
+        else:
+            combined = round(min(100.0, sum(1 for _ in active) and
+                                 __import__("math").prod(l["odds"] for l in active)), 4)
+            payout = round(parlay["amount"] * combined, 2)
+            db_exec("UPDATE parlays SET status='won', payout=?, combined_odds=? WHERE id=?",
+                    (payout, combined, pid))
+        db_exec("UPDATE users SET balance = balance + ? WHERE id=?",
+                (payout, parlay["user_id"]))
+    db_commit()
+
+
+# ---------------------------------------------------------------------------
+# Routes – Parlay
+# ---------------------------------------------------------------------------
+
+MAX_PARLAY_LEGS = 5
+MAX_PARLAY_ODDS = 100.0
+
+
+@app.route("/parlay", methods=["GET", "POST"])
+@login_required
+def parlay():
+    user       = current_user()
+    open_games = db_all("SELECT * FROM games WHERE status='open' ORDER BY game_time ASC")
+
+    if request.method == "POST":
+        import json
+        legs_raw = request.form.get("legs_json", "")
+        amount_s = request.form.get("amount", "").strip()
+
+        try:
+            legs = json.loads(legs_raw)
+        except (ValueError, TypeError):
+            flash("Invalid parlay data.", "danger")
+            return render_template("parlay.html", games=open_games, user=user)
+
+        if len(legs) < 2:
+            flash("A parlay needs at least 2 legs.", "danger")
+            return render_template("parlay.html", games=open_games, user=user)
+        if len(legs) > MAX_PARLAY_LEGS:
+            flash(f"Maximum {MAX_PARLAY_LEGS} legs per parlay.", "danger")
+            return render_template("parlay.html", games=open_games, user=user)
+
+        # Validate — one pick per game, all games still open
+        seen_games = set()
+        validated  = []
+        for leg in legs:
+            gid  = int(leg.get("game_id", 0))
+            pick = leg.get("pick", "")
+            btype = leg.get("bet_type", "moneyline")
+            if gid in seen_games:
+                flash("Only one pick per game in a parlay.", "danger")
+                return render_template("parlay.html", games=open_games, user=user)
+            seen_games.add(gid)
+            game = db_one("SELECT * FROM games WHERE id=? AND status='open'", (gid,))
+            if not game:
+                flash("One of the selected games is no longer open.", "warning")
+                return render_template("parlay.html", games=open_games, user=user)
+            # Determine odds
+            if btype == "spread" and game["spread1"] is not None:
+                odds = game["spread_odds1"] if pick == game["team1"] else game["spread_odds2"]
+            elif pick == game["team1"]:
+                odds = game["odds1"]
+            elif pick == game["team2"]:
+                odds = game["odds2"]
+            elif pick == "Draw" and game["odds_draw"]:
+                odds = game["odds_draw"]
+            else:
+                flash("Invalid pick detected.", "danger")
+                return render_template("parlay.html", games=open_games, user=user)
+            validated.append({"game_id": gid, "pick": pick, "bet_type": btype, "odds": odds})
+
+        import math
+        combined_odds = round(math.prod(l["odds"] for l in validated), 4)
+        if combined_odds > MAX_PARLAY_ODDS:
+            flash(f"Combined odds {combined_odds:.2f}x exceed the {MAX_PARLAY_ODDS}x limit.", "danger")
+            return render_template("parlay.html", games=open_games, user=user)
+
+        try:
+            amount = float(amount_s)
+        except ValueError:
+            flash("Enter a valid bet amount.", "danger")
+            return render_template("parlay.html", games=open_games, user=user)
+
+        if amount < 1:
+            flash("Minimum parlay bet is $1.", "danger")
+            return render_template("parlay.html", games=open_games, user=user)
+        if amount > user["balance"]:
+            flash("Insufficient balance.", "danger")
+            return render_template("parlay.html", games=open_games, user=user)
+
+        # Deduct balance and save parlay
+        db_exec("UPDATE users SET balance = balance - ? WHERE id=?", (amount, user["id"]))
+        if is_postgres():
+            parlay_id = db_one(
+                "INSERT INTO parlays (user_id, amount, combined_odds) VALUES (?,?,?) RETURNING id",
+                (user["id"], amount, combined_odds),
+            )["id"]
+        else:
+            cur = db_exec(
+                "INSERT INTO parlays (user_id, amount, combined_odds) VALUES (?,?,?)",
+                (user["id"], amount, combined_odds),
+            )
+            parlay_id = cur.lastrowid
+
+        for leg in validated:
+            db_exec(
+                "INSERT INTO parlay_legs (parlay_id, game_id, pick, bet_type, odds) VALUES (?,?,?,?,?)",
+                (parlay_id, leg["game_id"], leg["pick"], leg["bet_type"], leg["odds"]),
+            )
+        db_commit()
+
+        potential = round(amount * combined_odds, 2)
+        flash(
+            f"Parlay placed! {len(validated)} legs @ {combined_odds}x  |  "
+            f"Bet: ${amount:,.2f}  |  Potential payout: ${potential:,.2f}",
+            "success",
+        )
+        return redirect(url_for("my_bets"))
+
+    return render_template("parlay.html", games=open_games, user=user)
+
+
+# ---------------------------------------------------------------------------
+# Routes – Analytics
+# ---------------------------------------------------------------------------
+
+@app.route("/analytics")
+@login_required
+def analytics():
+    site = db_one("""
+        SELECT
+            COUNT(*)                                                          AS total_bets,
+            COALESCE(SUM(amount), 0)                                          AS total_wagered,
+            COALESCE(SUM(CASE WHEN status='won'  THEN payout  ELSE 0 END), 0) AS total_paid,
+            COALESCE(SUM(CASE WHEN status='won'  THEN 1       ELSE 0 END), 0) AS wins,
+            COALESCE(SUM(CASE WHEN status='lost' THEN 1       ELSE 0 END), 0) AS losses
+        FROM bets WHERE status != 'pending'
+    """)
+    parlay_site = db_one("""
+        SELECT
+            COUNT(*)                                                          AS total_parlays,
+            COALESCE(SUM(amount), 0)                                          AS total_wagered,
+            COALESCE(SUM(CASE WHEN status='won'  THEN payout  ELSE 0 END), 0) AS total_paid,
+            COALESCE(SUM(CASE WHEN status='won'  THEN 1       ELSE 0 END), 0) AS wins
+        FROM parlays WHERE status != 'pending'
+    """)
+    players = db_all("""
+        SELECT
+            u.username,
+            u.balance,
+            COUNT(b.id)                                                            AS bets,
+            COALESCE(SUM(b.amount), 0)                                             AS wagered,
+            COALESCE(SUM(CASE WHEN b.status='won'  THEN b.payout ELSE 0 END), 0)  AS returned,
+            COALESCE(SUM(CASE WHEN b.status='won'  THEN 1        ELSE 0 END), 0)  AS wins,
+            COALESCE(SUM(CASE WHEN b.status='lost' THEN 1        ELSE 0 END), 0)  AS losses
+        FROM users u
+        LEFT JOIN bets b ON b.user_id = u.id AND b.status != 'pending'
+        WHERE NOT u.is_admin
+        GROUP BY u.id, u.username, u.balance
+        ORDER BY wagered DESC
+    """)
+    top_games = db_all("""
+        SELECT g.title, g.team1, g.team2, g.status,
+               COUNT(b.id)               AS bet_count,
+               COALESCE(SUM(b.amount),0) AS total_wagered
+        FROM games g
+        LEFT JOIN bets b ON b.game_id = g.id
+        GROUP BY g.id, g.title, g.team1, g.team2, g.status
+        ORDER BY total_wagered DESC
+        LIMIT 10
+    """)
+    return render_template("analytics.html", site=site, parlay_site=parlay_site,
+                           players=players, top_games=top_games)
+
+
+# ---------------------------------------------------------------------------
+# Routes – Admin (delete game)
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/game/<int:game_id>/delete", methods=["POST"])
+@admin_required
+def admin_delete_game(game_id):
+    game = db_one("SELECT * FROM games WHERE id=?", (game_id,))
+    if not game:
+        flash("Game not found.", "danger")
+        return redirect(url_for("admin"))
+
+    # Refund pending straight bets
+    pending = db_all(
+        "SELECT * FROM bets WHERE game_id=? AND status='pending'", (game_id,)
+    )
+    for bet in pending:
+        db_exec("UPDATE users SET balance = balance + ? WHERE id=?",
+                (bet["amount"], bet["user_id"]))
+
+    # Void parlay legs on this game and refund those parlays
+    legs = db_all(
+        "SELECT * FROM parlay_legs WHERE game_id=? AND status='pending'", (game_id,)
+    )
+    for leg in legs:
+        parlay = db_one(
+            "SELECT * FROM parlays WHERE id=? AND status='pending'", (leg["parlay_id"],)
+        )
+        if parlay:
+            db_exec("UPDATE users SET balance = balance + ? WHERE id=?",
+                    (parlay["amount"], parlay["user_id"]))
+            db_exec("UPDATE parlays SET status='void', payout=? WHERE id=?",
+                    (parlay["amount"], parlay["parlay_id"]))
+
+    db_exec("DELETE FROM parlay_legs WHERE game_id=?", (game_id,))
+    db_exec("DELETE FROM bets WHERE game_id=?", (game_id,))
+    db_exec("DELETE FROM games WHERE id=?", (game_id,))
+    db_commit()
+    flash(
+        f"'{game['title']}' deleted. {len(pending)} bet(s) and {len(legs)} parlay leg(s) refunded.",
+        "success",
+    )
     return redirect(url_for("admin"))
 
 

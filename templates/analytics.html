@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header"><h1>Analytics</h1></div>
+
+<!-- SITE OVERVIEW -->
+<section class="section">
+  <h2 class="section-title">Site Overview</h2>
+
+  {% set total_wagered = (site.total_wagered or 0) + (parlay_site.total_wagered or 0) %}
+  {% set total_paid    = (site.total_paid    or 0) + (parlay_site.total_paid    or 0) %}
+  {% set house_profit  = total_wagered - total_paid %}
+  {% set house_margin  = ((house_profit / total_wagered * 100) if total_wagered > 0 else 0) %}
+
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-num">{{ (site.total_bets or 0) + (parlay_site.total_parlays or 0) }}</div>
+      <div class="stat-label">Total Bets + Parlays</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">${{ "%.0f"|format(total_wagered) }}</div>
+      <div class="stat-label">Total Wagered</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">${{ "%.0f"|format(total_paid) }}</div>
+      <div class="stat-label">Total Paid Out</div>
+    </div>
+    <div class="stat-card {% if house_profit >= 0 %}stat-won{% else %}stat-lost{% endif %}">
+      <div class="stat-num">${{ "%.0f"|format(house_profit|abs) }}</div>
+      <div class="stat-label">House {{ 'Profit' if house_profit >= 0 else 'Loss' }}</div>
+    </div>
+    <div class="stat-card {% if house_margin >= 0 %}stat-won{% else %}stat-lost{% endif %}">
+      <div class="stat-num">{{ "%.1f"|format(house_margin) }}%</div>
+      <div class="stat-label">House Margin</div>
+    </div>
+  </div>
+
+  <div class="stats-row" style="margin-top:1rem">
+    <div class="stat-card">
+      <div class="stat-num">{{ site.total_bets or 0 }}</div>
+      <div class="stat-label">Straight Bets</div>
+    </div>
+    <div class="stat-card stat-won">
+      <div class="stat-num">{{ site.wins or 0 }}</div>
+      <div class="stat-label">Straight Wins</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">{{ parlay_site.total_parlays or 0 }}</div>
+      <div class="stat-label">Parlays Placed</div>
+    </div>
+    <div class="stat-card stat-won">
+      <div class="stat-num">{{ parlay_site.wins or 0 }}</div>
+      <div class="stat-label">Parlays Won</div>
+    </div>
+  </div>
+</section>
+
+<!-- PLAYER BREAKDOWN -->
+<section class="section">
+  <h2 class="section-title">Player Breakdown</h2>
+  {% if players %}
+    <div class="table-wrap">
+      <table class="bet-table">
+        <thead>
+          <tr>
+            <th>Player</th>
+            <th>Balance</th>
+            <th>Bets</th>
+            <th>Wagered</th>
+            <th>Returned</th>
+            <th>Net P&amp;L</th>
+            <th>Win Rate</th>
+            <th>ROI</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in players %}
+            {% set net      = (p.returned or 0) - (p.wagered or 0) %}
+            {% set settled  = (p.wins or 0) + (p.losses or 0) %}
+            {% set win_rate = ((p.wins / settled * 100) if settled > 0 else 0) %}
+            {% set roi      = ((net / p.wagered * 100) if p.wagered > 0 else 0) %}
+            <tr>
+              <td><strong>{{ p.username }}</strong></td>
+              <td class="{{ 'text-won' if p.balance > 0 else 'text-muted' }}">${{ "%.2f"|format(p.balance) }}</td>
+              <td>{{ p.bets or 0 }}</td>
+              <td>${{ "%.2f"|format(p.wagered or 0) }}</td>
+              <td>${{ "%.2f"|format(p.returned or 0) }}</td>
+              <td class="{{ 'text-won' if net >= 0 else 'text-lost' }}">
+                {{ '+' if net >= 0 else '' }}${{ "%.2f"|format(net) }}
+              </td>
+              <td class="{{ 'text-won' if win_rate >= 50 else 'text-lost' }}">
+                {{ "%.1f"|format(win_rate) }}%
+              </td>
+              <td class="{{ 'text-won' if roi >= 0 else 'text-lost' }}">
+                {{ '+' if roi >= 0 else '' }}{{ "%.1f"|format(roi) }}%
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state"><p>No settled bets yet.</p></div>
+  {% endif %}
+</section>
+
+<!-- TOP GAMES -->
+<section class="section">
+  <h2 class="section-title">Top Games by Action</h2>
+  {% if top_games %}
+    <div class="table-wrap">
+      <table class="bet-table">
+        <thead>
+          <tr><th>Game</th><th>Teams</th><th>Status</th><th>Bets</th><th>Total Wagered</th></tr>
+        </thead>
+        <tbody>
+          {% for g in top_games %}
+            <tr>
+              <td><strong>{{ g.title }}</strong></td>
+              <td class="text-muted">{{ g.team1 }} vs {{ g.team2 }}</td>
+              <td>
+                {% if g.status == 'open' %}<span class="badge badge-open">Open</span>
+                {% elif g.status == 'closed' %}<span class="badge badge-closed">Closed</span>
+                {% else %}<span class="badge badge-settled">Settled</span>{% endif %}
+              </td>
+              <td>{{ g.bet_count }}</td>
+              <td>${{ "%.2f"|format(g.total_wagered) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state"><p>No games yet.</p></div>
+  {% endif %}
+</section>
+{% endblock %}

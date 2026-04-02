@@ -108,4 +108,65 @@
     <a href="{{ url_for('games') }}" class="btn btn-primary">Browse Games</a>
   </div>
 {% endif %}
+
+<!-- PARLAYS SECTION -->
+{% if parlays %}
+<section class="section" style="margin-top:2rem">
+  <h2 class="section-title">My Parlays</h2>
+  <div class="table-wrap">
+    <table class="bet-table">
+      <thead>
+        <tr>
+          <th>Legs</th>
+          <th>Combined Odds</th>
+          <th>Wager</th>
+          <th>Potential / Payout</th>
+          <th>Status</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in parlays %}
+          <tr class="bet-row-{{ p.status }}">
+            <td>
+              <ul class="parlay-leg-list">
+                {% for leg in parlay_legs_map[p.id] %}
+                  <li>
+                    <span class="{{ 'text-won' if leg.status == 'won' else ('text-lost' if leg.status == 'lost' else '') }}">
+                      {{ leg.pick }} ({{ leg.title }}) — {{ leg.odds }}x
+                      {% if leg.status == 'won' %}✓{% elif leg.status == 'lost' %}✗{% elif leg.status == 'push' %}~{% endif %}
+                    </span>
+                  </li>
+                {% endfor %}
+              </ul>
+            </td>
+            <td>{{ "%.2f"|format(p.combined_odds) }}x</td>
+            <td>${{ "%.2f"|format(p.amount) }}</td>
+            <td>
+              {% if p.status == 'won' %}
+                <span class="text-won">+${{ "%.2f"|format(p.payout) }}</span>
+              {% elif p.status == 'lost' %}
+                <span class="text-lost">-${{ "%.2f"|format(p.amount) }}</span>
+              {% elif p.status == 'push' %}
+                <span class="text-muted">Refund ${{ "%.2f"|format(p.amount) }}</span>
+              {% else %}
+                <span class="text-muted">${{ "%.2f"|format(p.amount * p.combined_odds) }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if p.status == 'pending' %}<span class="badge badge-pending">Pending</span>
+              {% elif p.status == 'won' %}<span class="badge badge-won">Won</span>
+              {% elif p.status == 'lost' %}<span class="badge badge-lost">Lost</span>
+              {% elif p.status == 'push' %}<span class="badge badge-closed">Push</span>
+              {% elif p.status == 'void' %}<span class="badge badge-closed">Void</span>
+              {% endif %}
+            </td>
+            <td class="text-muted small">{{ p.created_at | datefmt }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
 {% endblock %}
