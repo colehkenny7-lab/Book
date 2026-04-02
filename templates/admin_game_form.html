@@ -16,21 +16,36 @@
                value="{{ game.title if game else '' }}" placeholder="e.g. NBA Finals Game 7" />
       </div>
 
+      <!-- PROP BET TOGGLE -->
+      <div class="form-group prop-toggle-row">
+        <label class="prop-toggle-label">
+          <input type="checkbox" name="is_prop" id="is_prop"
+                 {% if game and game.is_prop %}checked{% endif %}
+                 onchange="togglePropMode(this.checked)" />
+          <span>Prop / Custom Bet</span>
+          <small class="text-muted">(NRFI, Over/Under, player props, etc.)</small>
+        </label>
+      </div>
+
       <div class="form-row two-col">
         <div class="form-group">
-          <label>Team 1</label>
+          <label id="label-team1">Team 1 / Option A</label>
           <input type="text" name="team1" class="form-input" required
-                 value="{{ game.team1 if game else '' }}" placeholder="e.g. Lakers" />
+                 value="{{ game.team1 if game else '' }}"
+                 id="input-team1"
+                 placeholder="e.g. Lakers" />
         </div>
         <div class="form-group">
-          <label>Team 2</label>
+          <label id="label-team2">Team 2 / Option B</label>
           <input type="text" name="team2" class="form-input" required
-                 value="{{ game.team2 if game else '' }}" placeholder="e.g. Celtics" />
+                 value="{{ game.team2 if game else '' }}"
+                 id="input-team2"
+                 placeholder="e.g. Celtics" />
         </div>
       </div>
 
       <!-- MONEYLINE ODDS -->
-      <p class="form-section-label">Moneyline Odds</p>
+      <p class="form-section-label" id="label-ml-odds">Moneyline Odds</p>
       <div class="form-row three-col">
         <div class="form-group">
           <label>Team 1 Odds</label>
@@ -49,7 +64,8 @@
         </div>
       </div>
 
-      <!-- POINT SPREAD -->
+      <!-- POINT SPREAD (hidden for prop bets) -->
+      <div id="spread-section">
       <p class="form-section-label">Point Spread <small>(optional – leave blank to disable)</small></p>
       <div class="form-row two-col">
         <div class="form-group">
@@ -78,6 +94,8 @@
                  value="{{ game.spread_odds2 if game and game.spread_odds2 else '1.91' }}" />
         </div>
       </div>
+
+      </div><!-- /spread-section -->
 
       <!-- BET LIMITS -->
       <p class="form-section-label">Bet Limits</p>
@@ -118,4 +136,38 @@
     </form>
   </div>
 </div>
+
+<script>
+function togglePropMode(isProp) {
+  const spreadSection = document.getElementById('spread-section');
+  const drawRow       = document.getElementById('draw-row');
+  const mlLabel       = document.getElementById('label-ml-odds');
+  const t1label       = document.getElementById('label-team1');
+  const t2label       = document.getElementById('label-team2');
+  const t1input       = document.getElementById('input-team1');
+  const t2input       = document.getElementById('input-team2');
+
+  if (isProp) {
+    t1label.textContent  = 'Option A (e.g. NRFI, Over, Yes)';
+    t2label.textContent  = 'Option B (e.g. YRFI, Under, No)';
+    t1input.placeholder  = 'e.g. NRFI';
+    t2input.placeholder  = 'e.g. YRFI';
+    mlLabel.textContent  = 'Option Odds';
+    if (spreadSection) spreadSection.style.display = 'none';
+  } else {
+    t1label.textContent  = 'Team 1 / Option A';
+    t2label.textContent  = 'Team 2 / Option B';
+    t1input.placeholder  = 'e.g. Lakers';
+    t2input.placeholder  = 'e.g. Celtics';
+    mlLabel.textContent  = 'Moneyline Odds';
+    if (spreadSection) spreadSection.style.display = '';
+  }
+}
+
+// Run on load to apply saved state
+document.addEventListener('DOMContentLoaded', () => {
+  const cb = document.getElementById('is_prop');
+  if (cb && cb.checked) togglePropMode(true);
+});
+</script>
 {% endblock %}

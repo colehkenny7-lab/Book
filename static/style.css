@@ -628,6 +628,36 @@ a:hover { text-decoration: underline; }
 .pnl-positive { background: #14532d44; border-color: #22c55e55; color: var(--green); }
 .pnl-negative { background: #7f1d1d44; border-color: #ef444455; color: #f87171; }
 
+/* ---- Prop bet display ---- */
+.prop-options {
+  display: flex;
+  gap: .75rem;
+  margin: .75rem 0;
+}
+.prop-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .35rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .6rem .5rem;
+  text-align: center;
+}
+
+/* ---- Prop toggle in form ---- */
+.prop-toggle-row { margin-bottom: 1rem; }
+.prop-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+.prop-toggle-label input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+
 /* ---- Parlay builder ---- */
 .parlay-layout {
   display: grid;

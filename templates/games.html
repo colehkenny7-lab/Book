@@ -20,17 +20,18 @@
               <span class="badge badge-open">Open</span>
             </div>
           </div>
-          <div class="matchup">
-            <div class="team">
-              <span class="team-name">{{ g.team1 }}</span>
-              <span class="odds-pill">{{ g.odds1 }}x</span>
-            </div>
-            <span class="vs">VS</span>
-            <div class="team team-right">
-              <span class="odds-pill">{{ g.odds2 }}x</span>
-              <span class="team-name">{{ g.team2 }}</span>
-            </div>
+          {% if g.is_prop %}
+          <div class="prop-options">
+            <div class="prop-option"><span class="team-name">{{ g.team1 }}</span><span class="odds-pill">{{ g.odds1 }}x</span></div>
+            <div class="prop-option"><span class="team-name">{{ g.team2 }}</span><span class="odds-pill">{{ g.odds2 }}x</span></div>
           </div>
+          {% else %}
+          <div class="matchup">
+            <div class="team"><span class="team-name">{{ g.team1 }}</span><span class="odds-pill">{{ g.odds1 }}x</span></div>
+            <span class="vs">VS</span>
+            <div class="team team-right"><span class="odds-pill">{{ g.odds2 }}x</span><span class="team-name">{{ g.team2 }}</span></div>
+          </div>
+          {% endif %}
           {% if g.odds_draw %}
             <div class="draw-row">
               <span>Draw</span>

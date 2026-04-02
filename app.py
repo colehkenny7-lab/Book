@@ -113,11 +113,12 @@ def _init_sqlite():
             spread_odds2  REAL DEFAULT 1.91,
             min_bet       REAL DEFAULT 1.0,
             max_bet       REAL,
-            game_time     TEXT NOT NULL,
-            status        TEXT NOT NULL DEFAULT 'open',
+            game_time     TEXT    NOT NULL,
+            status        TEXT    NOT NULL DEFAULT 'open',
             winner        TEXT,
             spread_result TEXT,
-            created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+            is_prop       INTEGER NOT NULL DEFAULT 0,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS bets (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,6 +165,7 @@ def _init_sqlite():
         ("games", "min_bet",      "REAL DEFAULT 1.0"),
         ("games", "max_bet",      "REAL"),
         ("games", "spread_result","TEXT"),
+        ("games", "is_prop",      "INTEGER NOT NULL DEFAULT 0"),
         ("bets",  "bet_type",     "TEXT DEFAULT 'moneyline'"),
     ]:
         try:
@@ -203,6 +205,7 @@ def _init_postgres():
             status        TEXT  NOT NULL DEFAULT 'open',
             winner        TEXT,
             spread_result TEXT,
+            is_prop       INTEGER NOT NULL DEFAULT 0,
             created_at    TIMESTAMP NOT NULL DEFAULT NOW()
         )
     """)
@@ -257,6 +260,7 @@ def _init_postgres():
         ("games", "min_bet",      "FLOAT DEFAULT 1.0"),
         ("games", "max_bet",      "FLOAT"),
         ("games", "spread_result","TEXT"),
+        ("games", "is_prop",      "INTEGER NOT NULL DEFAULT 0"),
         ("bets",  "bet_type",     "TEXT DEFAULT 'moneyline'"),
     ]:
         try:
@@ -756,8 +760,8 @@ def admin_new_game():
             INSERT INTO games
               (title, team1, team2, odds1, odds2, odds_draw,
                spread1, spread2, spread_odds1, spread_odds2,
-               min_bet, max_bet, game_time)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+               min_bet, max_bet, game_time, is_prop)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, data)
         db_commit()
         flash(f"Game '{data[0]}' created!", "success")
@@ -783,7 +787,7 @@ def admin_edit_game(game_id):
             UPDATE games SET
               title=?, team1=?, team2=?, odds1=?, odds2=?, odds_draw=?,
               spread1=?, spread2=?, spread_odds1=?, spread_odds2=?,
-              min_bet=?, max_bet=?, game_time=?, status=?
+              min_bet=?, max_bet=?, game_time=?, is_prop=?, status=?
             WHERE id=?
         """, (*data, status, game_id))
         db_commit()
@@ -845,9 +849,11 @@ def _parse_game_form(form):
         except ValueError:
             return None, "Max bet must be a number."
 
+    is_prop = 1 if form.get("is_prop") else 0
+
     return (title, team1, team2, odds1, odds2, odds_draw,
             spread1, spread2, spread_odds1, spread_odds2,
-            min_bet, max_bet, game_time), None
+            min_bet, max_bet, game_time, is_prop), None
 
 
 @app.route("/admin/game/<int:game_id>/settle", methods=["POST"])
