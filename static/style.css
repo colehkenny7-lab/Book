@@ -817,3 +817,95 @@ a:hover { text-decoration: underline; }
   .two-col, .three-col { grid-template-columns: 1fr; }
   .main-content { padding: 1.5rem 1rem; }
 }
+
+/* ---- Admin user profile link ---- */
+.admin-user-link { color: var(--text); text-decoration: none; }
+.admin-user-link:hover strong { color: var(--primary); }
+
+/* ---- Admin user profile page ---- */
+.parlay-history-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+.parlay-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem;
+  padding: .85rem 1rem;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+.parlay-odds-badge {
+  background: var(--primary);
+  color: #fff;
+  border-radius: 6px;
+  padding: .2rem .55rem;
+  font-size: .85rem;
+  font-weight: 700;
+}
+.parlay-legs-list { padding: .5rem .75rem; }
+.parlay-leg-row {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .45rem .25rem;
+  border-bottom: 1px solid var(--border);
+  font-size: .9rem;
+}
+.parlay-leg-row:last-child { border-bottom: none; }
+.parlay-leg-game { flex: 1; color: var(--muted); }
+.parlay-leg-pick { font-weight: 600; }
+.parlay-leg-odds { color: var(--accent); min-width: 40px; }
+
+/* ---- Easter seasonal banner ---- */
+.easter-banner {
+  background: linear-gradient(135deg, #2d1b4e 0%, #1a2e1a 50%, #2e1a2e 100%);
+  border: 1px solid #6b4fa0;
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .75rem;
+  position: relative;
+  overflow: hidden;
+}
+.easter-banner::before {
+  content: '🥚🐣🌸🐰🌷🥚🐣🌸🐰🌷🥚🐣🌸🐰🌷';
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  font-size: 1.1rem;
+  letter-spacing: 4px;
+  opacity: .25;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.easter-banner-text {
+  position: relative;
+  z-index: 1;
+}
+.easter-banner-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #d8b4fe;
+}
+.easter-banner-sub {
+  font-size: .85rem;
+  color: #a3e0a3;
+  margin-top: .15rem;
+}
+.easter-eggs {
+  font-size: 1.6rem;
+  letter-spacing: .3rem;
+  position: relative;
+  z-index: 1;
+}

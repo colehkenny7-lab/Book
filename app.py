@@ -742,9 +742,20 @@ def admin_game_bets(game_id):
         WHERE b.game_id = ?
         ORDER BY b.created_at DESC
     """, (game_id,))
+    parlay_legs = db_all("""
+        SELECT pl.*, u.username, u.id AS player_id,
+               p.amount AS parlay_amount, p.status AS parlay_status,
+               p.total_odds, p.payout, p.id AS parlay_id
+        FROM parlay_legs pl
+        JOIN parlays p ON p.id = pl.parlay_id
+        JOIN users u ON u.id = p.user_id
+        WHERE pl.game_id = ?
+        ORDER BY p.created_at DESC
+    """, (game_id,))
     total_wagered  = sum(b["amount"] for b in bets)
     total_exposure = sum(b["amount"] * (b["odds"] - 1) for b in bets if b["status"] == "pending")
     return render_template("admin_game_bets.html", game=game, bets=bets,
+                           parlay_legs=parlay_legs,
                            total_wagered=total_wagered, total_exposure=total_exposure)
 
 
@@ -1222,6 +1233,40 @@ def admin_delete_game(game_id):
         "success",
     )
     return redirect(url_for("admin"))
+
+
+# ---------------------------------------------------------------------------
+# Admin – User Profile
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/user/<int:user_id>/profile")
+@admin_required
+def admin_user_profile(user_id):
+    profile_user = db_one("SELECT * FROM users WHERE id=?", (user_id,))
+    if not profile_user:
+        flash("User not found.", "danger")
+        return redirect(url_for("admin"))
+    bets = db_all("""
+        SELECT b.*, g.title, g.team1, g.team2, g.status AS game_status, g.winner
+        FROM bets b JOIN games g ON g.id = b.game_id
+        WHERE b.user_id = ? ORDER BY b.created_at DESC
+    """, (user_id,))
+    parlays = db_all(
+        "SELECT * FROM parlays WHERE user_id=? ORDER BY created_at DESC", (user_id,)
+    )
+    parlay_legs_map = {}
+    for p in parlays:
+        parlay_legs_map[p["id"]] = db_all("""
+            SELECT pl.*, g.title FROM parlay_legs pl
+            JOIN games g ON g.id = pl.game_id WHERE pl.parlay_id=?
+        """, (p["id"],))
+    return render_template(
+        "admin_user_profile.html",
+        profile_user=profile_user,
+        bets=bets,
+        parlays=parlays,
+        parlay_legs_map=parlay_legs_map,
+    )
 
 
 # ---------------------------------------------------------------------------

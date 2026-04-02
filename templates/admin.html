@@ -132,7 +132,7 @@
       <tbody>
         {% for u in users %}
           <tr>
-            <td><strong>{{ u.username }}</strong></td>
+            <td><a href="{{ url_for('admin_user_profile', user_id=u.id) }}" class="admin-user-link"><strong>{{ u.username }}</strong></a></td>
             <td>${{ "%.2f"|format(u.balance) }}</td>
             <td>{{ 'Admin' if u.is_admin else 'Player' }}</td>
             <td class="small">{{ u.created_at | datefmt }}</td>

@@ -86,6 +86,55 @@
     </table>
   </div>
 {% else %}
-  <div class="empty-state"><p>No bets placed on this game yet.</p></div>
+  <div class="empty-state"><p>No straight bets placed on this game yet.</p></div>
+{% endif %}
+
+<!-- PARLAY LEGS ON THIS GAME -->
+{% if parlay_legs %}
+<section class="section" style="margin-top:2rem">
+  <h2 class="section-title">Parlay Legs on This Game ({{ parlay_legs|length }})</h2>
+  <div class="table-wrap">
+    <table class="bet-table">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>Pick</th>
+          <th>Leg Odds</th>
+          <th>Parlay Wager</th>
+          <th>Parlay Total Odds</th>
+          <th>Potential Payout</th>
+          <th>Leg Status</th>
+          <th>Parlay Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for leg in parlay_legs %}
+          <tr class="bet-row-{{ leg.status }}">
+            <td><a href="{{ url_for('admin_user_profile', user_id=leg.player_id) }}" style="color:inherit"><strong>{{ leg.username }}</strong></a></td>
+            <td>{{ leg.pick }}{% if leg.bet_type == 'spread' %} <span class="text-muted small">(spread)</span>{% endif %}</td>
+            <td>{{ leg.odds }}x</td>
+            <td>${{ "%.2f"|format(leg.parlay_amount) }}</td>
+            <td>{{ "%.2f"|format(leg.total_odds) }}x</td>
+            <td>${{ "%.2f"|format(leg.parlay_amount * leg.total_odds) }}</td>
+            <td>
+              {% if leg.status == 'pending' %}<span class="badge badge-pending">Pending</span>
+              {% elif leg.status == 'won' %}<span class="badge badge-won">Won</span>
+              {% elif leg.status == 'lost' %}<span class="badge badge-lost">Lost</span>
+              {% elif leg.status == 'push' %}<span class="badge badge-closed">Push</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if leg.parlay_status == 'pending' %}<span class="badge badge-pending">Pending</span>
+              {% elif leg.parlay_status == 'won' %}<span class="badge badge-won">Won</span>
+              {% elif leg.parlay_status == 'lost' %}<span class="badge badge-lost">Lost</span>
+              {% elif leg.parlay_status == 'void' %}<span class="badge badge-closed">Void</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 {% endif %}
 {% endblock %}
