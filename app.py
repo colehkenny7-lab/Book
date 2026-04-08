@@ -154,6 +154,37 @@ def _init_sqlite():
             odds       REAL    NOT NULL,
             status     TEXT    NOT NULL DEFAULT 'pending'
         );
+        CREATE TABLE IF NOT EXISTS golf_events (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    NOT NULL,
+            start_date TEXT,
+            status     TEXT    NOT NULL DEFAULT 'open',
+            created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS golf_players (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id    INTEGER NOT NULL REFERENCES golf_events(id),
+            name        TEXT    NOT NULL,
+            country     TEXT,
+            odds_winner REAL,
+            odds_top3   REAL,
+            odds_top10  REAL,
+            odds_top25  REAL,
+            finish_pos  INTEGER,
+            withdrawn   INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS golf_bets (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL REFERENCES users(id),
+            event_id   INTEGER NOT NULL REFERENCES golf_events(id),
+            player_id  INTEGER NOT NULL REFERENCES golf_players(id),
+            bet_type   TEXT    NOT NULL,
+            odds       REAL    NOT NULL,
+            amount     REAL    NOT NULL,
+            status     TEXT    NOT NULL DEFAULT 'pending',
+            payout     REAL,
+            created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
     """)
     db.commit()
     # Migrate older SQLite DBs
@@ -251,6 +282,43 @@ def _init_postgres():
             status    TEXT    NOT NULL DEFAULT 'pending'
         )
     """)
+    db_exec("""
+        CREATE TABLE IF NOT EXISTS golf_events (
+            id         SERIAL PRIMARY KEY,
+            name       TEXT NOT NULL,
+            start_date TEXT,
+            status     TEXT NOT NULL DEFAULT 'open',
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    """)
+    db_exec("""
+        CREATE TABLE IF NOT EXISTS golf_players (
+            id          SERIAL PRIMARY KEY,
+            event_id    INTEGER NOT NULL REFERENCES golf_events(id),
+            name        TEXT    NOT NULL,
+            country     TEXT,
+            odds_winner FLOAT,
+            odds_top3   FLOAT,
+            odds_top10  FLOAT,
+            odds_top25  FLOAT,
+            finish_pos  INTEGER,
+            withdrawn   INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    db_exec("""
+        CREATE TABLE IF NOT EXISTS golf_bets (
+            id         SERIAL PRIMARY KEY,
+            user_id    INTEGER NOT NULL REFERENCES users(id),
+            event_id   INTEGER NOT NULL REFERENCES golf_events(id),
+            player_id  INTEGER NOT NULL REFERENCES golf_players(id),
+            bet_type   TEXT    NOT NULL,
+            odds       FLOAT   NOT NULL,
+            amount     FLOAT   NOT NULL,
+            status     TEXT    NOT NULL DEFAULT 'pending',
+            payout     FLOAT,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    """)
     # Safe column migrations for existing Postgres DBs
     for table, col, defn in [
         ("games", "spread1",      "FLOAT"),
@@ -302,7 +370,69 @@ def get_current_exposure():
     parlay = db_one(
         "SELECT COALESCE(SUM(amount * (combined_odds - 1)), 0) AS exp FROM parlays WHERE status='pending'"
     )
-    return float(straight["exp"]) + float(parlay["exp"])
+    golf = db_one(
+        "SELECT COALESCE(SUM(amount * (odds - 1)), 0) AS exp FROM golf_bets WHERE status='pending'"
+    )
+    return float(straight["exp"]) + float(parlay["exp"]) + float(golf["exp"])
+
+
+# ---------------------------------------------------------------------------
+# Masters 2026 field
+# ---------------------------------------------------------------------------
+
+MASTERS_2026_FIELD = [
+    # (name, country, odds_winner, odds_top3, odds_top10, odds_top25)
+    ("Scottie Scheffler",    "USA", 3.5,  1.70, 1.25, 1.10),
+    ("Rory McIlroy",         "NIR", 7.0,  2.50, 1.50, 1.18),
+    ("Bryson DeChambeau",    "USA", 11.0, 3.50, 2.00, 1.30),
+    ("Collin Morikawa",      "USA", 13.0, 4.00, 2.20, 1.35),
+    ("Xander Schauffele",    "USA", 13.0, 4.00, 2.20, 1.35),
+    ("Jon Rahm",             "ESP", 14.0, 4.50, 2.30, 1.38),
+    ("Ludvig Aberg",         "SWE", 16.0, 5.00, 2.50, 1.42),
+    ("Viktor Hovland",       "NOR", 18.0, 5.50, 2.70, 1.45),
+    ("Tommy Fleetwood",      "ENG", 20.0, 6.00, 3.00, 1.50),
+    ("Brooks Koepka",        "USA", 22.0, 6.50, 3.20, 1.55),
+    ("Patrick Cantlay",      "USA", 22.0, 6.50, 3.20, 1.55),
+    ("Jordan Spieth",        "USA", 25.0, 7.00, 3.50, 1.60),
+    ("Shane Lowry",          "IRL", 28.0, 8.00, 3.80, 1.65),
+    ("Tony Finau",           "USA", 28.0, 8.00, 3.80, 1.65),
+    ("Hideki Matsuyama",     "JPN", 30.0, 9.00, 4.00, 1.70),
+    ("Dustin Johnson",       "USA", 33.0, 9.50, 4.50, 1.75),
+    ("Justin Thomas",        "USA", 33.0, 9.50, 4.50, 1.75),
+    ("Will Zalatoris",       "USA", 35.0,10.00, 5.00, 1.80),
+    ("Cameron Smith",        "AUS", 35.0,10.00, 5.00, 1.80),
+    ("Matt Fitzpatrick",     "ENG", 40.0,11.00, 5.50, 1.85),
+    ("Wyndham Clark",        "USA", 40.0,11.00, 5.50, 1.85),
+    ("Russell Henley",       "USA", 40.0,11.00, 5.50, 1.85),
+    ("Adam Scott",           "AUS", 45.0,12.00, 6.00, 1.90),
+    ("Max Homa",             "USA", 45.0,12.00, 6.00, 1.90),
+    ("Sahith Theegala",      "USA", 50.0,14.00, 7.00, 2.00),
+    ("Keegan Bradley",       "USA", 50.0,14.00, 7.00, 2.00),
+    ("Chris Kirk",           "USA", 55.0,15.00, 7.50, 2.10),
+    ("Corey Conners",        "CAN", 55.0,15.00, 7.50, 2.10),
+    ("Si Woo Kim",           "KOR", 60.0,16.00, 8.00, 2.20),
+    ("Jason Day",            "AUS", 60.0,16.00, 8.00, 2.20),
+    ("Sepp Straka",          "AUT", 65.0,18.00, 9.00, 2.30),
+    ("Tyrrell Hatton",       "ENG", 65.0,18.00, 9.00, 2.30),
+    ("Nick Taylor",          "CAN", 70.0,19.00, 9.50, 2.40),
+    ("Davis Riley",          "USA", 70.0,19.00, 9.50, 2.40),
+    ("Brian Harman",         "USA", 75.0,20.00,10.00, 2.50),
+    ("Akshay Bhatia",        "USA", 80.0,22.00,11.00, 2.60),
+    ("Min Woo Lee",          "AUS", 80.0,22.00,11.00, 2.60),
+    ("Tom Kim",              "KOR", 85.0,23.00,12.00, 2.70),
+    ("Harris English",       "USA", 85.0,23.00,12.00, 2.70),
+    ("Taylor Moore",         "USA", 90.0,25.00,12.50, 2.80),
+    ("Phil Mickelson",       "USA", 90.0,25.00,13.00, 3.00),
+    ("Denny McCarthy",       "USA",100.0,28.00,14.00, 3.20),
+    ("Luke List",            "USA",100.0,28.00,14.00, 3.20),
+    ("Fred Couples",         "USA",120.0,35.00,18.00, 4.50),
+    ("Vijay Singh",          "FIJ",120.0,35.00,18.00, 4.50),
+    ("Larry Mize",           "USA",200.0,60.00,30.00, 8.00),
+    ("Jose Maria Olazabal",  "ESP",200.0,60.00,30.00, 8.00),
+    ("Mike Weir",            "CAN",200.0,60.00,30.00, 8.00),
+    ("Sandy Lyle",           "SCO",300.0,90.00,50.00,12.00),
+    ("Ian Woosnam",          "WAL",300.0,90.00,50.00,12.00),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -1294,6 +1424,320 @@ def admin_user_profile(user_id):
         parlays=parlays,
         parlay_legs_map=parlay_legs_map,
     )
+
+
+# ---------------------------------------------------------------------------
+# Golf routes
+# ---------------------------------------------------------------------------
+
+@app.route("/golf")
+def golf():
+    events = db_all(
+        "SELECT * FROM golf_events WHERE status != 'archived' ORDER BY created_at DESC"
+    )
+    event_players = {}
+    for e in events:
+        event_players[e["id"]] = db_all(
+            "SELECT * FROM golf_players WHERE event_id=? AND withdrawn=0 ORDER BY odds_winner ASC",
+            (e["id"],),
+        )
+    user_bets = {}
+    if "user_id" in session:
+        for e in events:
+            user_bets[e["id"]] = db_all("""
+                SELECT gb.*, gp.name AS player_name
+                FROM golf_bets gb
+                JOIN golf_players gp ON gp.id = gb.player_id
+                WHERE gb.event_id=? AND gb.user_id=?
+                ORDER BY gb.created_at DESC
+            """, (e["id"], session["user_id"]))
+    return render_template("golf.html", events=events,
+                           event_players=event_players, user_bets=user_bets)
+
+
+@app.route("/golf/<int:event_id>/bet", methods=["POST"])
+@login_required
+def golf_bet(event_id):
+    event = db_one("SELECT * FROM golf_events WHERE id=?", (event_id,))
+    if not event or event["status"] != "open":
+        flash("Betting is closed for this event.", "danger")
+        return redirect(url_for("golf"))
+
+    player_id = request.form.get("player_id", type=int)
+    bet_type  = request.form.get("bet_type", "").strip()
+    try:
+        amount = float(request.form.get("amount", 0))
+    except (ValueError, TypeError):
+        amount = 0
+
+    if bet_type not in ("winner", "top3", "top10", "top25") or amount <= 0:
+        flash("Invalid bet.", "danger")
+        return redirect(url_for("golf"))
+
+    player = db_one(
+        "SELECT * FROM golf_players WHERE id=? AND event_id=? AND withdrawn=0",
+        (player_id, event_id),
+    )
+    if not player:
+        flash("Player not available.", "danger")
+        return redirect(url_for("golf"))
+
+    odds_map = {
+        "winner": player["odds_winner"],
+        "top3":   player["odds_top3"],
+        "top10":  player["odds_top10"],
+        "top25":  player["odds_top25"],
+    }
+    odds = odds_map.get(bet_type)
+    if not odds:
+        flash("No odds set for that bet type.", "danger")
+        return redirect(url_for("golf"))
+
+    user = db_one("SELECT * FROM users WHERE id=?", (session["user_id"],))
+    if float(user["balance"]) < amount:
+        flash("Insufficient balance.", "danger")
+        return redirect(url_for("golf"))
+
+    max_exp_s = get_setting("max_exposure")
+    if max_exp_s:
+        current_exp = get_current_exposure()
+        profit      = amount * (odds - 1)
+        if current_exp + profit > float(max_exp_s):
+            max_allowed = max(0, float(max_exp_s) - current_exp) / (odds - 1)
+            flash(f"Site exposure limit reached. Max allowed bet: ${max_allowed:,.2f}.", "danger")
+            return redirect(url_for("golf"))
+
+    db_exec("UPDATE users SET balance = balance - ? WHERE id=?", (amount, user["id"]))
+    db_exec("""
+        INSERT INTO golf_bets (user_id, event_id, player_id, bet_type, odds, amount)
+        VALUES (?,?,?,?,?,?)
+    """, (user["id"], event_id, player_id, bet_type, odds, amount))
+    db_commit()
+
+    label = {"winner": "Winner", "top3": "Top 3", "top10": "Top 10", "top25": "Top 25"}
+    flash(f"Bet placed: {player['name']} – {label[bet_type]} @ {odds}x", "success")
+    return redirect(url_for("golf"))
+
+
+# ---------------------------------------------------------------------------
+# Golf admin routes
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/golf")
+@admin_required
+def admin_golf():
+    events = db_all("SELECT * FROM golf_events ORDER BY created_at DESC")
+    event_players = {}
+    for e in events:
+        event_players[e["id"]] = db_all(
+            "SELECT * FROM golf_players WHERE event_id=? ORDER BY odds_winner ASC", (e["id"],)
+        )
+    return render_template("admin_golf.html", events=events, event_players=event_players)
+
+
+@app.route("/admin/golf/event/new", methods=["POST"])
+@admin_required
+def admin_golf_new_event():
+    name       = request.form.get("name", "").strip()
+    start_date = request.form.get("start_date", "").strip()
+    populate   = request.form.get("populate_masters") == "1"
+
+    if not name:
+        flash("Event name required.", "danger")
+        return redirect(url_for("admin_golf"))
+
+    if is_postgres():
+        cur      = db_exec(
+            "INSERT INTO golf_events (name, start_date) VALUES (?,?) RETURNING id",
+            (name, start_date or None),
+        )
+        event_id = cur.fetchone()["id"]
+    else:
+        cur      = db_exec(
+            "INSERT INTO golf_events (name, start_date) VALUES (?,?)",
+            (name, start_date or None),
+        )
+        event_id = cur.lastrowid
+
+    if populate:
+        for pname, country, ow, o3, o10, o25 in MASTERS_2026_FIELD:
+            db_exec("""
+                INSERT INTO golf_players
+                    (event_id, name, country, odds_winner, odds_top3, odds_top10, odds_top25)
+                VALUES (?,?,?,?,?,?,?)
+            """, (event_id, pname, country, ow, o3, o10, o25))
+
+    db_commit()
+    flash(f"Event '{name}' created" + (" with full Masters field." if populate else "."), "success")
+    return redirect(url_for("admin_golf"))
+
+
+@app.route("/admin/golf/event/<int:event_id>/player/add", methods=["POST"])
+@admin_required
+def admin_golf_add_player(event_id):
+    name    = request.form.get("name", "").strip()
+    country = request.form.get("country", "").strip()
+    ow  = request.form.get("odds_winner",  type=float)
+    o3  = request.form.get("odds_top3",    type=float)
+    o10 = request.form.get("odds_top10",   type=float)
+    o25 = request.form.get("odds_top25",   type=float)
+    if not name:
+        flash("Player name required.", "danger")
+        return redirect(url_for("admin_golf"))
+    db_exec("""
+        INSERT INTO golf_players
+            (event_id, name, country, odds_winner, odds_top3, odds_top10, odds_top25)
+        VALUES (?,?,?,?,?,?,?)
+    """, (event_id, name, country or None, ow, o3, o10, o25))
+    db_commit()
+    flash(f"{name} added.", "success")
+    return redirect(url_for("admin_golf"))
+
+
+@app.route("/admin/golf/event/<int:event_id>/player/<int:player_id>/edit", methods=["POST"])
+@admin_required
+def admin_golf_edit_player(event_id, player_id):
+    ow  = request.form.get("odds_winner",  type=float)
+    o3  = request.form.get("odds_top3",    type=float)
+    o10 = request.form.get("odds_top10",   type=float)
+    o25 = request.form.get("odds_top25",   type=float)
+    db_exec("""
+        UPDATE golf_players
+        SET odds_winner=?, odds_top3=?, odds_top10=?, odds_top25=?
+        WHERE id=? AND event_id=?
+    """, (ow, o3, o10, o25, player_id, event_id))
+    db_commit()
+    flash("Odds updated.", "success")
+    return redirect(url_for("admin_golf"))
+
+
+@app.route("/admin/golf/event/<int:event_id>/player/<int:player_id>/delete", methods=["POST"])
+@admin_required
+def admin_golf_delete_player(event_id, player_id):
+    # Refund pending bets first
+    pending = db_all(
+        "SELECT * FROM golf_bets WHERE player_id=? AND status='pending'", (player_id,)
+    )
+    for b in pending:
+        db_exec("UPDATE users SET balance = balance + ? WHERE id=?", (b["amount"], b["user_id"]))
+    db_exec("DELETE FROM golf_bets WHERE player_id=?", (player_id,))
+    db_exec("DELETE FROM golf_players WHERE id=? AND event_id=?", (player_id, event_id))
+    db_commit()
+    flash("Player removed and pending bets refunded.", "success")
+    return redirect(url_for("admin_golf"))
+
+
+@app.route("/admin/golf/event/<int:event_id>/close", methods=["POST"])
+@admin_required
+def admin_golf_close(event_id):
+    db_exec("UPDATE golf_events SET status='closed' WHERE id=?", (event_id,))
+    db_commit()
+    flash("Betting closed.", "success")
+    return redirect(url_for("admin_golf"))
+
+
+@app.route("/admin/golf/event/<int:event_id>/settle", methods=["GET", "POST"])
+@admin_required
+def admin_golf_settle(event_id):
+    event = db_one("SELECT * FROM golf_events WHERE id=?", (event_id,))
+    if not event:
+        flash("Event not found.", "danger")
+        return redirect(url_for("admin_golf"))
+    players = db_all(
+        "SELECT * FROM golf_players WHERE event_id=? ORDER BY odds_winner ASC", (event_id,)
+    )
+
+    if request.method == "POST":
+        for p in players:
+            pid = p["id"]
+            wd  = request.form.get(f"wd_{pid}") == "1"
+            pos_s = request.form.get(f"pos_{pid}", "").strip()
+
+            if wd:
+                db_exec("UPDATE golf_players SET withdrawn=1, finish_pos=NULL WHERE id=?", (pid,))
+                pending = db_all(
+                    "SELECT * FROM golf_bets WHERE player_id=? AND status='pending'", (pid,)
+                )
+                for b in pending:
+                    db_exec("UPDATE golf_bets SET status='void', payout=? WHERE id=?",
+                            (b["amount"], b["id"]))
+                    db_exec("UPDATE users SET balance = balance + ? WHERE id=?",
+                            (b["amount"], b["user_id"]))
+            elif pos_s:
+                try:
+                    db_exec("UPDATE golf_players SET finish_pos=? WHERE id=?",
+                            (int(pos_s), pid))
+                except ValueError:
+                    pass
+
+        db_commit()
+
+        # Settle all bets where player now has a finish position
+        bets = db_all("""
+            SELECT gb.*, gp.finish_pos, gp.withdrawn
+            FROM golf_bets gb
+            JOIN golf_players gp ON gp.id = gb.player_id
+            WHERE gb.event_id=? AND gb.status='pending'
+        """, (event_id,))
+
+        settled = 0
+        for b in bets:
+            if b["withdrawn"] or b["finish_pos"] is None:
+                continue
+            pos = b["finish_pos"]
+            bt  = b["bet_type"]
+            won = ((bt == "winner" and pos == 1)   or
+                   (bt == "top3"   and pos <= 3)   or
+                   (bt == "top10"  and pos <= 10)  or
+                   (bt == "top25"  and pos <= 25))
+            if won:
+                payout = b["amount"] * b["odds"]
+                db_exec("UPDATE golf_bets SET status='won', payout=? WHERE id=?",
+                        (payout, b["id"]))
+                db_exec("UPDATE users SET balance = balance + ? WHERE id=?",
+                        (payout, b["user_id"]))
+            else:
+                db_exec("UPDATE golf_bets SET status='lost', payout=0 WHERE id=?", (b["id"],))
+            settled += 1
+
+        # Mark event settled if no pending positions remain
+        still_open = db_one("""
+            SELECT COUNT(*) AS cnt FROM golf_players
+            WHERE event_id=? AND finish_pos IS NULL AND withdrawn=0
+        """, (event_id,))
+        if still_open["cnt"] == 0:
+            db_exec("UPDATE golf_events SET status='settled' WHERE id=?", (event_id,))
+
+        db_commit()
+        flash(f"Saved positions and settled {settled} bet(s).", "success")
+        return redirect(url_for("admin_golf"))
+
+    return render_template("admin_golf_settle.html", event=event, players=players)
+
+
+@app.route("/admin/golf/event/<int:event_id>/delete", methods=["POST"])
+@admin_required
+def admin_golf_delete_event(event_id):
+    event = db_one("SELECT * FROM golf_events WHERE id=?", (event_id,))
+    if not event:
+        return redirect(url_for("admin_golf"))
+    # Refund all pending bets
+    pending = db_all("""
+        SELECT gb.* FROM golf_bets gb
+        JOIN golf_players gp ON gp.id = gb.player_id
+        WHERE gp.event_id=? AND gb.status='pending'
+    """, (event_id,))
+    for b in pending:
+        db_exec("UPDATE users SET balance = balance + ? WHERE id=?", (b["amount"], b["user_id"]))
+    # Clean up
+    players = db_all("SELECT id FROM golf_players WHERE event_id=?", (event_id,))
+    for p in players:
+        db_exec("DELETE FROM golf_bets WHERE player_id=?", (p["id"],))
+    db_exec("DELETE FROM golf_players WHERE event_id=?", (event_id,))
+    db_exec("DELETE FROM golf_events WHERE id=?", (event_id,))
+    db_commit()
+    flash(f"Event deleted and {len(pending)} pending bet(s) refunded.", "success")
+    return redirect(url_for("admin_golf"))
 
 
 # ---------------------------------------------------------------------------

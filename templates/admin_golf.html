@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Golf Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>⛳ Golf Admin</h1>
+  <a href="{{ url_for('admin') }}" class="btn btn-ghost">← Back</a>
+</div>
+
+<!-- CREATE NEW EVENT -->
+<section class="section">
+  <h2 class="section-title">Create New Event</h2>
+  <form method="POST" action="{{ url_for('admin_golf_new_event') }}"
+        style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+    <div class="form-group" style="margin:0;flex:1;min-width:200px">
+      <label>Event Name</label>
+      <input type="text" name="name" class="form-input" placeholder="e.g. The Masters 2026" required />
+    </div>
+    <div class="form-group" style="margin:0">
+      <label>Start Date</label>
+      <input type="text" name="start_date" class="form-input" placeholder="Apr 10 – 13, 2026" />
+    </div>
+    <div class="form-group" style="margin:0;display:flex;align-items:center;gap:.4rem">
+      <input type="checkbox" name="populate_masters" value="1" id="pop-masters" />
+      <label for="pop-masters" style="cursor:pointer;font-weight:500">Auto-populate Masters 2026 field (50 players)</label>
+    </div>
+    <button class="btn btn-primary">Create Event</button>
+  </form>
+</section>
+
+{% for event in events %}
+{% set players = event_players[event.id] %}
+<section class="section">
+  <div class="page-header" style="margin-bottom:1rem">
+    <div>
+      <h2 class="section-title" style="margin-bottom:.2rem">{{ event.name }}</h2>
+      {% if event.start_date %}<p class="text-muted small">{{ event.start_date }}</p>{% endif %}
+    </div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+      {% if event.status == 'open' %}<span class="badge badge-open">Open</span>
+      {% elif event.status == 'closed' %}<span class="badge badge-closed">Closed</span>
+      {% elif event.status == 'settled' %}<span class="badge badge-settled">Settled</span>
+      {% endif %}
+
+      {% if event.status == 'open' %}
+        <form method="POST" action="{{ url_for('admin_golf_close', event_id=event.id) }}" style="display:inline">
+          <button class="btn btn-warning btn-xs" onclick="return confirm('Close betting for this event?')">Close Betting</button>
+        </form>
+      {% endif %}
+      {% if event.status != 'settled' %}
+        <a href="{{ url_for('admin_golf_settle', event_id=event.id) }}" class="btn btn-primary btn-xs">Settle</a>
+      {% endif %}
+      <form method="POST" action="{{ url_for('admin_golf_delete_event', event_id=event.id) }}" style="display:inline"
+            onsubmit="return confirm('Delete event and refund all pending bets?')">
+        <button class="btn btn-danger btn-xs">Delete</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Players table -->
+  {% if players %}
+  <div class="table-wrap" style="margin-bottom:1.5rem">
+    <table class="bet-table golf-table">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>Country</th>
+          <th class="golf-odds-col">Winner</th>
+          <th class="golf-odds-col">Top 3</th>
+          <th class="golf-odds-col">Top 10</th>
+          <th class="golf-odds-col">Top 25</th>
+          <th>Finish</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in players %}
+        <tr {% if p.withdrawn %}style="opacity:.5"{% endif %}>
+          <td><strong>{{ p.name }}</strong>{% if p.withdrawn %} <span class="text-muted small">WD</span>{% endif %}</td>
+          <td class="text-muted small">{{ p.country or '–' }}</td>
+          <td>
+            <form method="POST" action="{{ url_for('admin_golf_edit_player', event_id=event.id, player_id=p.id) }}"
+                  class="golf-odds-edit-form">
+              <input type="number" name="odds_winner" value="{{ p.odds_winner or '' }}"
+                     step="0.1" min="1" class="form-input form-input-xs golf-odds-input" placeholder="–" />
+              <input type="number" name="odds_top3" value="{{ p.odds_top3 or '' }}"
+                     step="0.1" min="1" class="form-input form-input-xs golf-odds-input" placeholder="–" />
+              <input type="number" name="odds_top10" value="{{ p.odds_top10 or '' }}"
+                     step="0.1" min="1" class="form-input form-input-xs golf-odds-input" placeholder="–" />
+              <input type="number" name="odds_top25" value="{{ p.odds_top25 or '' }}"
+                     step="0.1" min="1" class="form-input form-input-xs golf-odds-input" placeholder="–" />
+          </td>
+          <td></td><td></td><td></td>
+          <td>
+            {% if p.finish_pos %}<strong>{{ p.finish_pos }}</strong>{% else %}–{% endif %}
+          </td>
+          <td class="action-cell">
+              <button class="btn btn-ghost btn-xs">Save Odds</button>
+            </form>
+            <form method="POST"
+                  action="{{ url_for('admin_golf_delete_player', event_id=event.id, player_id=p.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Remove {{ p.name }}?')">
+              <button class="btn btn-danger btn-xs">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Add player form -->
+  {% if event.status != 'settled' %}
+  <details>
+    <summary class="btn btn-ghost btn-xs" style="display:inline-block;cursor:pointer">+ Add Player Manually</summary>
+    <form method="POST" action="{{ url_for('admin_golf_add_player', event_id=event.id) }}"
+          style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:flex-end;margin-top:.75rem">
+      <input type="text" name="name" class="form-input" placeholder="Player name" required style="flex:1;min-width:150px" />
+      <input type="text" name="country" class="form-input form-input-xs" placeholder="Country" style="width:80px" />
+      <input type="number" name="odds_winner" class="form-input form-input-xs" placeholder="Win odds" step="0.1" min="1" style="width:90px" />
+      <input type="number" name="odds_top3"   class="form-input form-input-xs" placeholder="Top 3" step="0.1" min="1" style="width:80px" />
+      <input type="number" name="odds_top10"  class="form-input form-input-xs" placeholder="Top 10" step="0.1" min="1" style="width:80px" />
+      <input type="number" name="odds_top25"  class="form-input form-input-xs" placeholder="Top 25" step="0.1" min="1" style="width:80px" />
+      <button class="btn btn-primary btn-xs">Add</button>
+    </form>
+  </details>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

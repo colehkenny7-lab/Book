@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Golf Betting{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>⛳ Golf Betting</h1>
+</div>
+
+{% if not events %}
+  <div class="empty-state"><p>No golf events available yet. Check back soon!</p></div>
+{% endif %}
+
+{% for event in events %}
+{% set players = event_players[event.id] %}
+<section class="section">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">
+    <div>
+      <h2 class="section-title" style="margin-bottom:.2rem">{{ event.name }}</h2>
+      {% if event.start_date %}<p class="text-muted small">{{ event.start_date }}</p>{% endif %}
+    </div>
+    <div>
+      {% if event.status == 'open' %}<span class="badge badge-open">Betting Open</span>
+      {% elif event.status == 'closed' %}<span class="badge badge-closed">Betting Closed</span>
+      {% elif event.status == 'settled' %}<span class="badge badge-settled">Settled</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if players %}
+  <div class="table-wrap">
+    <table class="bet-table golf-table">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>Country</th>
+          <th class="golf-odds-col">🏆 Winner</th>
+          <th class="golf-odds-col">Top 3</th>
+          <th class="golf-odds-col">Top 10</th>
+          <th class="golf-odds-col">Top 25</th>
+          {% if event.status == 'settled' %}<th>Finish</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in players %}
+        <tr {% if p.finish_pos == 1 %}class="golf-winner-row"{% endif %}>
+          <td><strong>{{ p.name }}</strong></td>
+          <td class="text-muted small">{{ p.country or '–' }}</td>
+
+          <!-- Winner -->
+          <td class="golf-odds-cell">
+            {% if p.odds_winner %}
+              <span class="odds-pill golf-odds">{{ p.odds_winner }}x</span>
+              {% if event.status == 'open' and current_user %}
+                <button class="btn btn-primary btn-xs golf-bet-btn"
+                  onclick="openGolfBet({{ event.id }}, {{ p.id }}, '{{ p.name|replace("'","\\'")|e }}', 'winner', {{ p.odds_winner }})">Bet</button>
+              {% endif %}
+            {% else %}–{% endif %}
+          </td>
+
+          <!-- Top 3 -->
+          <td class="golf-odds-cell">
+            {% if p.odds_top3 %}
+              <span class="odds-pill golf-odds-secondary">{{ p.odds_top3 }}x</span>
+              {% if event.status == 'open' and current_user %}
+                <button class="btn btn-ghost btn-xs golf-bet-btn"
+                  onclick="openGolfBet({{ event.id }}, {{ p.id }}, '{{ p.name|replace("'","\\'")|e }}', 'top3', {{ p.odds_top3 }})">Bet</button>
+              {% endif %}
+            {% else %}–{% endif %}
+          </td>
+
+          <!-- Top 10 -->
+          <td class="golf-odds-cell">
+            {% if p.odds_top10 %}
+              <span class="odds-pill golf-odds-secondary">{{ p.odds_top10 }}x</span>
+              {% if event.status == 'open' and current_user %}
+                <button class="btn btn-ghost btn-xs golf-bet-btn"
+                  onclick="openGolfBet({{ event.id }}, {{ p.id }}, '{{ p.name|replace("'","\\'")|e }}', 'top10', {{ p.odds_top10 }})">Bet</button>
+              {% endif %}
+            {% else %}–{% endif %}
+          </td>
+
+          <!-- Top 25 -->
+          <td class="golf-odds-cell">
+            {% if p.odds_top25 %}
+              <span class="odds-pill golf-odds-secondary">{{ p.odds_top25 }}x</span>
+              {% if event.status == 'open' and current_user %}
+                <button class="btn btn-ghost btn-xs golf-bet-btn"
+                  onclick="openGolfBet({{ event.id }}, {{ p.id }}, '{{ p.name|replace("'","\\'")|e }}', 'top25', {{ p.odds_top25 }})">Bet</button>
+              {% endif %}
+            {% else %}–{% endif %}
+          </td>
+
+          {% if event.status == 'settled' %}
+          <td>
+            {% if p.finish_pos %}
+              <strong>{{ p.finish_pos }}{% if p.finish_pos == 1 %} 🏆{% elif p.finish_pos <= 3 %} 🥉{% endif %}</strong>
+            {% elif p.withdrawn %}<span class="text-muted">WD</span>
+            {% else %}–{% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty-state"><p>No players added yet.</p></div>
+  {% endif %}
+
+  {% if not current_user and event.status == 'open' %}
+    <p class="text-muted" style="margin-top:1rem">
+      <a href="{{ url_for('login') }}">Log in</a> to place bets.
+    </p>
+  {% endif %}
+
+  <!-- User's bets on this event -->
+  {% if current_user and user_bets.get(event.id) %}
+  <div style="margin-top:1.5rem">
+    <h3 class="section-title" style="font-size:1rem">Your Bets on This Event</h3>
+    <div class="table-wrap">
+      <table class="bet-table">
+        <thead>
+          <tr><th>Player</th><th>Bet Type</th><th>Odds</th><th>Wager</th><th>Potential</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for b in user_bets[event.id] %}
+          <tr class="bet-row-{{ b.status }}">
+            <td><strong>{{ b.player_name }}</strong></td>
+            <td>
+              {% if b.bet_type == 'winner' %}<span class="badge badge-open">Winner</span>
+              {% elif b.bet_type == 'top3'   %}<span class="badge badge-settled">Top 3</span>
+              {% elif b.bet_type == 'top10'  %}<span class="badge badge-closed">Top 10</span>
+              {% elif b.bet_type == 'top25'  %}<span class="badge badge-pending">Top 25</span>
+              {% endif %}
+            </td>
+            <td>{{ b.odds }}x</td>
+            <td>${{ "%.2f"|format(b.amount) }}</td>
+            <td>${{ "%.2f"|format(b.amount * b.odds) }}</td>
+            <td>
+              {% if b.status == 'pending' %}<span class="badge badge-pending">Pending</span>
+              {% elif b.status == 'won'   %}<span class="badge badge-won">Won</span>
+              {% elif b.status == 'lost'  %}<span class="badge badge-lost">Lost</span>
+              {% elif b.status == 'void'  %}<span class="badge badge-closed">Void</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endfor %}
+
+<!-- BET MODAL -->
+<div id="golf-modal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <h3>Place Golf Bet</h3>
+    <p id="golf-modal-desc" style="color:var(--muted);margin-bottom:1rem"></p>
+    <form method="POST" id="golf-bet-form">
+      <input type="hidden" name="player_id" id="golf-player-id" />
+      <input type="hidden" name="bet_type"  id="golf-bet-type" />
+      <div class="form-group">
+        <label>Wager Amount ($)</label>
+        <input type="number" name="amount" id="golf-amount"
+               min="1" step="1" class="form-input" required
+               oninput="updateGolfPayout()" />
+      </div>
+      <p id="golf-payout-preview" style="color:var(--green);font-weight:600;margin-bottom:.75rem"></p>
+      <div style="display:flex;gap:.5rem">
+        <button type="submit" class="btn btn-primary">Confirm Bet</button>
+        <button type="button" class="btn btn-ghost" onclick="closeGolfBet()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+let _golfOdds = 1;
+function openGolfBet(eventId, playerId, playerName, betType, odds) {
+  _golfOdds = odds;
+  const labels = {winner:'Winner 🏆', top3:'Top 3', top10:'Top 10', top25:'Top 25'};
+  document.getElementById('golf-modal-desc').textContent =
+    playerName + ' – ' + labels[betType] + ' @ ' + odds + 'x';
+  document.getElementById('golf-player-id').value = playerId;
+  document.getElementById('golf-bet-type').value  = betType;
+  document.getElementById('golf-bet-form').action = '/golf/' + eventId + '/bet';
+  document.getElementById('golf-amount').value = '';
+  document.getElementById('golf-payout-preview').textContent = '';
+  document.getElementById('golf-modal').style.display = 'flex';
+  document.getElementById('golf-amount').focus();
+}
+function closeGolfBet() {
+  document.getElementById('golf-modal').style.display = 'none';
+}
+function updateGolfPayout() {
+  const amt = parseFloat(document.getElementById('golf-amount').value) || 0;
+  const el  = document.getElementById('golf-payout-preview');
+  if (amt > 0) {
+    el.textContent = 'Payout: $' + (amt * _golfOdds).toFixed(2) + ' (profit $' + (amt * (_golfOdds - 1)).toFixed(2) + ')';
+  } else {
+    el.textContent = '';
+  }
+}
+</script>
+{% endblock %}
