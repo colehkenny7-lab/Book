@@ -5,44 +5,85 @@
 <div class="page-header">
   <div>
     <h1>Settle: {{ event.name }}</h1>
-    <p class="text-muted small">Enter each player's finish position. Check WD for withdrawals.</p>
+    <p class="text-muted small">Auto-fetch live results or enter positions manually. Check WD for withdrawals.</p>
   </div>
   <a href="{{ url_for('admin_golf') }}" class="btn btn-ghost">← Back</a>
 </div>
 
-<form method="POST">
+<!-- AUTO-FETCH TOOLBAR -->
+<div class="exposure-bar" style="margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem">
+  <div class="exposure-info">
+    <span class="exposure-label">Auto-Settle from ESPN</span>
+    <span class="exposure-value text-muted small" id="fetch-status">
+      Pulls live leaderboard and fills positions automatically.
+    </span>
+  </div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+    <button class="btn btn-primary" id="fetch-btn" onclick="fetchLiveResults()">
+      ⛳ Fetch Live Results
+    </button>
+    <button class="btn btn-ghost" onclick="togglePaste()">📋 Bulk Paste</button>
+    <button class="btn btn-warning btn-xs" onclick="clearAll()">Clear All</button>
+  </div>
+</div>
+
+<!-- BULK PASTE FALLBACK -->
+<div id="paste-section" style="display:none;margin-bottom:1.5rem">
+  <div class="section" style="padding:1rem">
+    <p class="text-muted small" style="margin-bottom:.5rem">
+      Paste a ranked list — one player per line, e.g. <code>1. Scottie Scheffler</code> or just <code>Scottie Scheffler</code> (order = position).
+    </p>
+    <textarea id="paste-input" class="form-input" rows="10"
+              style="width:100%;font-family:monospace;font-size:.85rem"
+              placeholder="1. Scottie Scheffler&#10;2. Rory McIlroy&#10;3. Jon Rahm&#10;..."></textarea>
+    <button class="btn btn-primary btn-xs" style="margin-top:.5rem" onclick="applyPaste()">Apply Paste</button>
+    <span id="paste-status" class="text-muted small" style="margin-left:.75rem"></span>
+  </div>
+</div>
+
+<!-- FETCH SUMMARY (hidden until fetch runs) -->
+<div id="fetch-summary" style="display:none;margin-bottom:1rem" class="section"></div>
+
+<!-- SETTLE FORM -->
+<form method="POST" id="settle-form">
   <div class="table-wrap">
-    <table class="bet-table golf-table">
+    <table class="bet-table golf-table" id="settle-table">
       <thead>
         <tr>
-          <th>#</th>
+          <th style="width:40px">#</th>
           <th>Player</th>
           <th>Country</th>
           <th>Finish Position</th>
-          <th>WD (Withdrawal)</th>
+          <th>WD</th>
+          <th style="width:60px">Status</th>
         </tr>
       </thead>
       <tbody>
         {% for p in players %}
-        <tr {% if p.withdrawn %}style="opacity:.5"{% endif %}>
+        <tr id="row-{{ p.id }}" {% if p.withdrawn %}style="opacity:.5"{% endif %}>
           <td class="text-muted small">{{ loop.index }}</td>
           <td><strong>{{ p.name }}</strong></td>
           <td class="text-muted small">{{ p.country or '–' }}</td>
           <td>
             <input type="number"
                    name="pos_{{ p.id }}"
+                   id="pos-{{ p.id }}"
                    value="{{ p.finish_pos or '' }}"
                    min="1" max="999"
                    class="form-input form-input-xs"
                    style="width:80px"
-                   placeholder="e.g. 14" />
+                   placeholder="–"
+                   oninput="markRow({{ p.id }})" />
           </td>
           <td>
-            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer">
-              <input type="checkbox" name="wd_{{ p.id }}" value="1"
-                     {% if p.withdrawn %}checked{% endif %} />
-              <span class="text-muted small">WD</span>
-            </label>
+            <input type="checkbox" name="wd_{{ p.id }}" id="wd-{{ p.id }}" value="1"
+                   {% if p.withdrawn %}checked{% endif %}
+                   onchange="toggleWD({{ p.id }})" />
+          </td>
+          <td id="status-{{ p.id }}" class="text-muted small">
+            {% if p.withdrawn %}WD
+            {% elif p.finish_pos %}#{{ p.finish_pos }}
+            {% else %}–{% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -50,12 +91,164 @@
     </table>
   </div>
 
-  <div style="margin-top:1.5rem;display:flex;gap:.75rem">
+  <div style="margin-top:1.5rem;display:flex;gap:.75rem;align-items:center">
     <button type="submit" class="btn btn-primary"
             onclick="return confirm('Save these positions and settle all bets?')">
-      Save &amp; Settle
+      ✅ Save &amp; Settle All Bets
     </button>
     <a href="{{ url_for('admin_golf') }}" class="btn btn-ghost">Cancel</a>
+    <span id="filled-count" class="text-muted small"></span>
   </div>
 </form>
+
+<script>
+const EVENT_ID = {{ event.id }};
+
+async function fetchLiveResults() {
+  const btn = document.getElementById('fetch-btn');
+  const status = document.getElementById('fetch-status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Fetching...';
+  status.textContent = 'Connecting to ESPN...';
+
+  try {
+    const resp = await fetch(`/admin/golf/event/${EVENT_ID}/fetch-results`);
+    const data = await resp.json();
+
+    if (!data.ok) {
+      status.textContent = '❌ Error: ' + data.error;
+      btn.textContent = '⛳ Fetch Live Results';
+      btn.disabled = false;
+      return;
+    }
+
+    // Fill matched positions
+    for (const m of data.matched) {
+      const input = document.getElementById('pos-' + m.player_id);
+      if (input) {
+        input.value = m.position;
+        markRow(m.player_id, 'auto');
+      }
+    }
+
+    // Mark WD players
+    for (const w of data.wd) {
+      const cb = document.getElementById('wd-' + w.player_id);
+      if (cb) {
+        cb.checked = true;
+        toggleWD(w.player_id, 'auto');
+      }
+    }
+
+    updateFilledCount();
+
+    // Show summary
+    const summary = document.getElementById('fetch-summary');
+    summary.style.display = 'block';
+    const evtName = data.event_name ? ` (${data.event_name})` : '';
+    summary.innerHTML = `
+      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;padding:.75rem 1rem;align-items:center">
+        <span>📡 ESPN${evtName}</span>
+        <span style="color:var(--green)">✅ ${data.matched.length} matched</span>
+        ${data.wd.length ? `<span style="color:var(--yellow)">⚠️ ${data.wd.length} WD</span>` : ''}
+        ${data.unmatched.length ? `<span style="color:var(--red)">❓ ${data.unmatched.length} unmatched</span>` : ''}
+        ${data.unmatched.length ? `<span class="text-muted small">${data.unmatched.join(', ')}</span>` : ''}
+      </div>`;
+    status.textContent = `Fetched ${data.total_espn} players from ESPN. Review and save.`;
+  } catch (e) {
+    status.textContent = '❌ Fetch failed: ' + e.message;
+  }
+
+  btn.textContent = '⛳ Fetch Live Results';
+  btn.disabled = false;
+}
+
+function togglePaste() {
+  const el = document.getElementById('paste-section');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function applyPaste() {
+  const raw = document.getElementById('paste-input').value.trim();
+  if (!raw) return;
+
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  // Build ESPN-style list: position from line number or explicit "1. Name" format
+  const parsed = [];
+  lines.forEach((line, idx) => {
+    // Strip leading "1." or "1)" or "T1." etc.
+    const cleaned = line.replace(/^[T]?\d+[.):\s]+/, '').trim();
+    const explicitMatch = line.match(/^[T]?(\d+)[.):\s]+(.+)/);
+    const pos = explicitMatch ? parseInt(explicitMatch[1]) : idx + 1;
+    const name = explicitMatch ? explicitMatch[2].trim() : cleaned;
+    if (name) parsed.push({ name, pos });
+  });
+
+  // Match against table rows
+  const rows = document.querySelectorAll('#settle-table tbody tr');
+  let matched = 0;
+  for (const { name, pos } of parsed) {
+    const nameLower = name.toLowerCase();
+    const nameLast  = nameLower.split(' ').pop();
+    for (const row of rows) {
+      const playerName = row.querySelector('strong')?.textContent.trim().toLowerCase() || '';
+      const playerLast = playerName.split(' ').pop();
+      if (playerName === nameLower || playerLast === nameLast) {
+        const pid = row.id.replace('row-', '');
+        const input = document.getElementById('pos-' + pid);
+        if (input) { input.value = pos; markRow(pid, 'auto'); matched++; }
+        break;
+      }
+    }
+  }
+
+  document.getElementById('paste-status').textContent = `Matched ${matched} of ${parsed.length} players.`;
+  updateFilledCount();
+}
+
+function markRow(pid, source) {
+  const input  = document.getElementById('pos-' + pid);
+  const status = document.getElementById('status-' + pid);
+  const val = input?.value;
+  if (val) {
+    input.style.borderColor = source === 'auto' ? 'var(--green)' : '';
+    if (status) status.textContent = '#' + val;
+  }
+}
+
+function toggleWD(pid, source) {
+  const cb     = document.getElementById('wd-' + pid);
+  const row    = document.getElementById('row-' + pid);
+  const status = document.getElementById('status-' + pid);
+  const input  = document.getElementById('pos-' + pid);
+  if (cb?.checked) {
+    row.style.opacity = '.4';
+    if (status) status.textContent = 'WD';
+    if (input) input.value = '';
+  } else {
+    row.style.opacity = '1';
+    if (status) status.textContent = '–';
+  }
+}
+
+function clearAll() {
+  if (!confirm('Clear all filled positions?')) return;
+  document.querySelectorAll('#settle-table input[type=number]').forEach(i => { i.value = ''; i.style.borderColor = ''; });
+  document.querySelectorAll('#settle-table input[type=checkbox]').forEach(c => { if (c.checked) { c.checked = false; const pid = c.id.replace('wd-',''); toggleWD(pid); } });
+  document.querySelectorAll('#settle-table td[id^=status-]').forEach(s => s.textContent = '–');
+  document.getElementById('fetch-summary').style.display = 'none';
+  updateFilledCount();
+}
+
+function updateFilledCount() {
+  const inputs  = document.querySelectorAll('#settle-table input[type=number]');
+  const filled  = Array.from(inputs).filter(i => i.value).length;
+  const wdCount = Array.from(document.querySelectorAll('#settle-table input[type=checkbox]')).filter(c => c.checked).length;
+  document.getElementById('filled-count').textContent =
+    `${filled} positions filled, ${wdCount} WD marked of ${inputs.length} players`;
+}
+
+// Init count on load
+updateFilledCount();
+</script>
 {% endblock %}

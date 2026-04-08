@@ -4,8 +4,8 @@ from datetime import datetime
 from functools import wraps
 from zoneinfo import ZoneInfo
 
-from flask import (Flask, flash, g, redirect, render_template, request,
-                   session, url_for)
+from flask import (Flask, flash, g, jsonify, redirect, render_template,
+                   request, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
@@ -1738,6 +1738,99 @@ def admin_golf_delete_event(event_id):
     db_commit()
     flash(f"Event deleted and {len(pending)} pending bet(s) refunded.", "success")
     return redirect(url_for("admin_golf"))
+
+
+@app.route("/admin/golf/event/<int:event_id>/fetch-results")
+@admin_required
+def admin_golf_fetch_results(event_id):
+    """Fetch live leaderboard from ESPN and fuzzy-match against our players."""
+    import json as _json
+    import urllib.request
+
+    url = "https://site.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga"
+    try:
+        req_obj = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req_obj, timeout=10) as resp:
+            data = _json.loads(resp.read())
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)})
+
+    # Build ESPN result dicts: name.lower() -> int position
+    espn_pos = {}
+    espn_wd  = set()
+
+    for evt in data.get("events", []):
+        for comp in evt.get("competitions", []):
+            for c in comp.get("competitors", []):
+                name = c.get("athlete", {}).get("displayName", "").strip()
+                if not name:
+                    continue
+                status_type = (c.get("status", {})
+                                .get("type", {})
+                                .get("name", "")
+                                .lower())
+                if status_type in ("cut", "wd", "dq", "withdrawn"):
+                    espn_wd.add(name.lower())
+                    continue
+                # Position string may be "T4", "4", "CUT", etc.
+                raw = (c.get("status", {})
+                        .get("position", {})
+                        .get("displayName", ""))
+                try:
+                    pos = int(str(raw).lstrip("Tt").strip())
+                    espn_pos[name.lower()] = pos
+                except (ValueError, TypeError):
+                    pass
+
+    # Fuzzy-match our players against ESPN names
+    players = db_all(
+        "SELECT id, name FROM golf_players WHERE event_id=? AND withdrawn=0",
+        (event_id,),
+    )
+
+    matched   = []
+    wd_list   = []
+    unmatched = []
+
+    for p in players:
+        p_lower = p["name"].lower()
+        p_last  = p_lower.split()[-1]
+
+        pos      = None
+        is_wd    = False
+
+        # 1. Exact full-name match
+        if p_lower in espn_pos:
+            pos = espn_pos[p_lower]
+        elif p_lower in espn_wd:
+            is_wd = True
+        else:
+            # 2. Last-name match
+            for espn_name, espn_p in espn_pos.items():
+                if espn_name.split()[-1] == p_last:
+                    pos = espn_p
+                    break
+            if pos is None:
+                for espn_name in espn_wd:
+                    if espn_name.split()[-1] == p_last:
+                        is_wd = True
+                        break
+
+        if pos is not None:
+            matched.append({"player_id": p["id"], "name": p["name"], "position": pos})
+        elif is_wd:
+            wd_list.append({"player_id": p["id"], "name": p["name"]})
+        else:
+            unmatched.append(p["name"])
+
+    return jsonify({
+        "ok":          True,
+        "matched":     matched,
+        "wd":          wd_list,
+        "unmatched":   unmatched,
+        "total_espn":  len(espn_pos),
+        "event_name":  data.get("events", [{}])[0].get("name", ""),
+    })
 
 
 # ---------------------------------------------------------------------------
