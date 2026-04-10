@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}All Bets{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>All Bets</h1>
+  <a href="{{ url_for('admin') }}" class="btn btn-ghost">← Admin</a>
+</div>
+
+<!-- SUMMARY STATS -->
+<div class="stats-row" style="margin-bottom:1.5rem">
+  <div class="stat-card">
+    <div class="stat-num">{{ straight|length + parlays|length + golf|length }}</div>
+    <div class="stat-label">Total Bets</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num">{{ pending_count }}</div>
+    <div class="stat-label">Open / Pending</div>
+  </div>
+  <div class="stat-card stat-won">
+    <div class="stat-num">{{ won_count }}</div>
+    <div class="stat-label">Won</div>
+  </div>
+  <div class="stat-card stat-lost">
+    <div class="stat-num">{{ lost_count }}</div>
+    <div class="stat-label">Lost</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num">${{ "%.2f"|format(total_wagered) }}</div>
+    <div class="stat-label">Total Wagered</div>
+  </div>
+</div>
+
+<!-- FILTER TABS -->
+<div class="filter-tabs" style="margin-bottom:1.25rem">
+  <button class="filter-tab active" onclick="showTab('all',   this)">All</button>
+  <button class="filter-tab"        onclick="showTab('open',  this)">Open / Pending</button>
+  <button class="filter-tab"        onclick="showTab('done',  this)">Finished</button>
+  <button class="filter-tab"        onclick="showTab('straight-tab', this)">Straight ({{ straight|length }})</button>
+  <button class="filter-tab"        onclick="showTab('parlay-tab',   this)">Parlays ({{ parlays|length }})</button>
+  <button class="filter-tab"        onclick="showTab('golf-tab',     this)">Golf ({{ golf|length }})</button>
+</div>
+
+<!-- ===================== STRAIGHT BETS ===================== -->
+<section class="section allbets-section" data-tab="straight-tab">
+  <h2 class="section-title">Straight Bets ({{ straight|length }})</h2>
+  {% if straight %}
+  <div class="table-wrap">
+    <table class="bet-table">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>Game</th>
+          <th>Type</th>
+          <th>Pick</th>
+          <th>Odds</th>
+          <th>Wager</th>
+          <th>Potential</th>
+          <th>Status</th>
+          <th>Placed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in straight %}
+        <tr class="bet-row-{{ b.status }} allbets-row"
+            data-status="{{ b.status }}"
+            data-kind="straight">
+          <td>
+            <a href="{{ url_for('admin_user_profile', user_id=b.user_id) }}"
+               class="admin-user-link"><strong>{{ b.username }}</strong></a>
+          </td>
+          <td class="small">{{ b.game_title }}</td>
+          <td>
+            {% if b.bet_type == 'spread' %}
+              <span class="badge badge-closed">Spread</span>
+            {% else %}
+              <span class="badge badge-settled">ML</span>
+            {% endif %}
+          </td>
+          <td>{{ b.pick }}</td>
+          <td>{{ b.odds }}x</td>
+          <td>${{ "%.2f"|format(b.amount) }}</td>
+          <td>${{ "%.2f"|format(b.potential) }}</td>
+          <td>
+            {% if b.status == 'pending' %}<span class="badge badge-pending">Pending</span>
+            {% elif b.status == 'won'   %}<span class="badge badge-won">Won</span>
+            {% elif b.status == 'lost'  %}<span class="badge badge-lost">Lost</span>
+            {% elif b.status == 'push'  %}<span class="badge badge-closed">Push</span>
+            {% elif b.status == 'void'  %}<span class="badge badge-closed">Void</span>{% endif %}
+          </td>
+          <td class="text-muted small">{{ b.created_at | datefmt('%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty-state"><p>No straight bets yet.</p></div>
+  {% endif %}
+</section>
+
+<!-- ===================== PARLAYS ===================== -->
+<section class="section allbets-section" data-tab="parlay-tab">
+  <h2 class="section-title">Parlays ({{ parlays|length }})</h2>
+  {% if parlays %}
+    {% for p in parlays %}
+    <div class="parlay-history-card allbets-row"
+         data-status="{{ p.status }}"
+         data-kind="parlay">
+      <div class="parlay-history-header">
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+          <a href="{{ url_for('admin_user_profile', user_id=p.user_id) }}"
+             class="admin-user-link"><strong>{{ p.username }}</strong></a>
+          <span class="parlay-odds-badge">{{ "%.2f"|format(p.combined_odds) }}x</span>
+          <span class="text-muted small">{{ parlay_legs_map[p.id]|length }}-leg</span>
+          <span>Wager: <strong>${{ "%.2f"|format(p.amount) }}</strong></span>
+          <span class="text-muted small">→ ${{ "%.2f"|format(p.potential) }}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:.75rem">
+          {% if p.payout %}<span class="text-muted small">Paid: ${{ "%.2f"|format(p.payout) }}</span>{% endif %}
+          {% if p.status == 'pending' %}<span class="badge badge-pending">Pending</span>
+          {% elif p.status == 'won'   %}<span class="badge badge-won">Won</span>
+          {% elif p.status == 'lost'  %}<span class="badge badge-lost">Lost</span>
+          {% elif p.status == 'void'  %}<span class="badge badge-closed">Void</span>{% endif %}
+          <span class="text-muted small">{{ p.created_at | datefmt('%m-%d %H:%M') }}</span>
+        </div>
+      </div>
+      <div class="parlay-legs-list">
+        {% for leg in parlay_legs_map[p.id] %}
+        <div class="parlay-leg-row">
+          <span class="parlay-leg-game">{{ leg.title }}</span>
+          <span class="parlay-leg-pick">{{ leg.pick }}{% if leg.bet_type == 'spread' %} <span class="text-muted small">(spread)</span>{% endif %}</span>
+          <span class="parlay-leg-odds">{{ leg.odds }}x</span>
+          <span>
+            {% if leg.status == 'pending' %}<span class="badge badge-pending">Pending</span>
+            {% elif leg.status == 'won'   %}<span class="badge badge-won">Won</span>
+            {% elif leg.status == 'lost'  %}<span class="badge badge-lost">Lost</span>
+            {% elif leg.status == 'push'  %}<span class="badge badge-closed">Push</span>{% endif %}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state"><p>No parlays yet.</p></div>
+  {% endif %}
+</section>
+
+<!-- ===================== GOLF BETS ===================== -->
+<section class="section allbets-section" data-tab="golf-tab">
+  <h2 class="section-title">Golf Bets ({{ golf|length }})</h2>
+  {% if golf %}
+  <div class="table-wrap">
+    <table class="bet-table">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>Event</th>
+          <th>Golfer</th>
+          <th>Bet</th>
+          <th>Odds</th>
+          <th>Wager</th>
+          <th>Potential</th>
+          <th>Status</th>
+          <th>Placed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in golf %}
+        <tr class="bet-row-{{ b.status }} allbets-row"
+            data-status="{{ b.status }}"
+            data-kind="golf">
+          <td>
+            <a href="{{ url_for('admin_user_profile', user_id=b.user_id) }}"
+               class="admin-user-link"><strong>{{ b.username }}</strong></a>
+          </td>
+          <td class="small">{{ b.game_title }}</td>
+          <td><strong>{{ b.pick }}</strong></td>
+          <td>
+            {% if b.bet_type == 'winner' %}<span class="badge badge-open">🏆 Win</span>
+            {% elif b.bet_type == 'top3'  %}<span class="badge badge-settled">Top 3</span>
+            {% elif b.bet_type == 'top10' %}<span class="badge badge-closed">Top 10</span>
+            {% elif b.bet_type == 'top25' %}<span class="badge badge-pending">Top 25</span>
+            {% endif %}
+          </td>
+          <td>{{ b.odds }}x</td>
+          <td>${{ "%.2f"|format(b.amount) }}</td>
+          <td>${{ "%.2f"|format(b.potential) }}</td>
+          <td>
+            {% if b.status == 'pending' %}<span class="badge badge-pending">Pending</span>
+            {% elif b.status == 'won'   %}<span class="badge badge-won">Won</span>
+            {% elif b.status == 'lost'  %}<span class="badge badge-lost">Lost</span>
+            {% elif b.status == 'void'  %}<span class="badge badge-closed">Void</span>{% endif %}
+          </td>
+          <td class="text-muted small">{{ b.created_at | datefmt('%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty-state"><p>No golf bets yet.</p></div>
+  {% endif %}
+</section>
+
+<script>
+function showTab(tab, btn) {
+  // Update active button
+  document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  const sections = document.querySelectorAll('.allbets-section');
+
+  if (tab === 'all') {
+    // Show all sections, show all rows
+    sections.forEach(s => s.style.display = '');
+    document.querySelectorAll('.allbets-row').forEach(r => r.style.display = '');
+    document.querySelectorAll('.parlay-history-card.allbets-row').forEach(r => r.style.display = '');
+    return;
+  }
+
+  if (tab === 'open' || tab === 'done') {
+    // Show all sections, filter rows by status
+    sections.forEach(s => s.style.display = '');
+    document.querySelectorAll('.allbets-row').forEach(r => {
+      const st = r.dataset.status;
+      const show = tab === 'open'
+        ? st === 'pending'
+        : (st === 'won' || st === 'lost' || st === 'void');
+      r.style.display = show ? '' : 'none';
+    });
+    return;
+  }
+
+  // Tab = straight-tab / parlay-tab / golf-tab
+  sections.forEach(s => {
+    s.style.display = s.dataset.tab === tab ? '' : 'none';
+  });
+  // Reset row visibility within shown sections
+  document.querySelectorAll('.allbets-row').forEach(r => r.style.display = '');
+}
+</script>
+{% endblock %}

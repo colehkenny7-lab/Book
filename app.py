@@ -1834,6 +1834,85 @@ def admin_golf_fetch_results(event_id):
 
 
 # ---------------------------------------------------------------------------
+# Admin – All Bets (unified view)
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/all-bets")
+@admin_required
+def admin_all_bets():
+    # Straight bets
+    straight = db_all("""
+        SELECT b.id, u.username, u.id AS user_id,
+               'straight' AS kind,
+               g.title AS game_title, g.id AS game_id,
+               b.pick, b.bet_type, b.odds, b.amount,
+               b.amount * b.odds AS potential,
+               b.status, b.payout, b.created_at
+        FROM bets b
+        JOIN users u ON u.id = b.user_id
+        JOIN games g ON g.id = b.game_id
+        ORDER BY b.created_at DESC
+    """)
+
+    # Parlays (each parlay = one row; legs shown on expand)
+    parlays_raw = db_all("""
+        SELECT p.id, u.username, u.id AS user_id,
+               'parlay' AS kind,
+               p.amount, p.combined_odds,
+               p.amount * p.combined_odds AS potential,
+               p.status, p.payout, p.created_at
+        FROM parlays p
+        JOIN users u ON u.id = p.user_id
+        ORDER BY p.created_at DESC
+    """)
+    parlay_legs_map = {}
+    for p in parlays_raw:
+        parlay_legs_map[p["id"]] = db_all("""
+            SELECT pl.*, g.title
+            FROM parlay_legs pl JOIN games g ON g.id = pl.game_id
+            WHERE pl.parlay_id = ?
+        """, (p["id"],))
+
+    # Golf bets
+    golf = db_all("""
+        SELECT gb.id, u.username, u.id AS user_id,
+               'golf' AS kind,
+               ge.name AS game_title, ge.id AS game_id,
+               gp.name AS pick, gb.bet_type, gb.odds, gb.amount,
+               gb.amount * gb.odds AS potential,
+               gb.status, gb.payout, gb.created_at
+        FROM golf_bets gb
+        JOIN users u ON u.id = gb.user_id
+        JOIN golf_players gp ON gp.id = gb.player_id
+        JOIN golf_events ge ON ge.id = gb.event_id
+        ORDER BY gb.created_at DESC
+    """)
+
+    # Summary counts
+    all_rows = list(straight) + list(golf)  # for counting (parlays separate)
+    pending_count  = sum(1 for r in all_rows if r["status"] == "pending")
+    pending_count += sum(1 for p in parlays_raw if p["status"] == "pending")
+    won_count      = sum(1 for r in all_rows if r["status"] == "won")
+    won_count     += sum(1 for p in parlays_raw if p["status"] == "won")
+    lost_count     = sum(1 for r in all_rows if r["status"] == "lost")
+    lost_count    += sum(1 for p in parlays_raw if p["status"] == "lost")
+    total_wagered  = (sum(float(r["amount"]) for r in all_rows) +
+                      sum(float(p["amount"]) for p in parlays_raw))
+
+    return render_template(
+        "admin_all_bets.html",
+        straight=straight,
+        parlays=parlays_raw,
+        parlay_legs_map=parlay_legs_map,
+        golf=golf,
+        pending_count=pending_count,
+        won_count=won_count,
+        lost_count=lost_count,
+        total_wagered=total_wagered,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

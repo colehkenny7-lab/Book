@@ -947,3 +947,27 @@ a:hover { text-decoration: underline; }
 .golf-winner-row td:first-child::before { content: '🏆 '; }
 .golf-odds-edit-form { display: contents; }
 .golf-odds-input { width: 68px !important; }
+
+/* ---- Filter tabs (All Bets page) ---- */
+.filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+.filter-tab {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: .4rem .85rem;
+  font-size: .85rem;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.filter-tab:hover { background: var(--surface2); color: var(--text); }
+.filter-tab.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}

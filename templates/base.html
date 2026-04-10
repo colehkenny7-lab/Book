@@ -27,6 +27,7 @@
         <a href="{{ url_for('analytics') }}">Analytics</a>
         {% if session.get('is_admin') %}
           <a href="{{ url_for('admin') }}" class="admin-link">Admin</a>
+          <a href="{{ url_for('admin_all_bets') }}" class="admin-link">All Bets</a>
           <a href="{{ url_for('admin_parlays') }}" class="admin-link">Parlays</a>
           <a href="{{ url_for('admin_golf') }}" class="admin-link">⛳ Golf</a>
         {% endif %}
